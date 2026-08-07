@@ -1,4 +1,3 @@
-// @ts-nocheck
 "use client";
 
 import { useState, useEffect } from "react";
@@ -36,8 +35,13 @@ export default function Home() {
   useEffect(() => {
     const savedMembers = localStorage.getItem("loa_members");
     const savedResult = localStorage.getItem("loa_party_result");
-    if (savedMembers) try { setMemberList(JSON.parse(savedMembers)); } catch (e) {}
-    if (savedResult) try { setPartyResult(JSON.parse(savedResult)); } catch (e) {}
+    if (savedMembers) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      try { setMemberList(JSON.parse(savedMembers)); } catch {}
+    }
+    if (savedResult) {
+      try { setPartyResult(JSON.parse(savedResult)); } catch {}
+    }
   }, []);
 
   const saveToLocalStorage = (newMembers, newResult) => {
@@ -86,7 +90,7 @@ export default function Home() {
       } else {
         alert(data.error || "캐릭터를 조회할 수 없습니다.");
       }
-    } catch (err) {
+    } catch {
       alert("통신 중 에러가 발생했습니다.");
     } finally {
       setLoading(false);
@@ -160,13 +164,13 @@ export default function Home() {
   };
 
   const balanceEightManParty = (members) => {
-    let sorted = [...members].sort((a, b) => b.combatPower - a.combatPower);
-    let g1 = [];
-    let g2 = [];
-    let usedOwners = new Set();
-    let usedClasses = new Set();
+    const sorted = [...members].sort((a, b) => b.combatPower - a.combatPower);
+    const g1 = [];
+    const g2 = [];
+    const usedOwners = new Set();
+    const usedClasses = new Set();
 
-    for (let m of sorted) {
+    for (const m of sorted) {
       const currentDlrCount = g1.filter(x => x.role === "딜러").length;
       const isDlr = m.role === "딜러";
       if (g1.length < 4 && (!isDlr || currentDlrCount < 3) && !usedOwners.has(m.owner) && !usedClasses.has(m.className)) {
@@ -176,7 +180,7 @@ export default function Home() {
       }
     }
 
-    for (let m of sorted) {
+    for (const m of sorted) {
       if (!g1.includes(m) && g2.length < 4) {
         const currentDlrCount = g2.filter(x => x.role === "딜러").length;
         const isDlr = m.role === "딜러";
@@ -213,8 +217,8 @@ export default function Home() {
     const matchResults = [];
 
     sortedRaids.forEach((raid) => {
-      let eligibleSupports = [];
-      let eligibleDealers = [];
+      const eligibleSupports = [];
+      const eligibleDealers = [];
 
       allChars.forEach(c => {
         const key = c.charName + c.owner;
@@ -230,7 +234,7 @@ export default function Home() {
       eligibleSupports.sort((a, b) => b.combatPower - a.combatPower);
       eligibleDealers.sort((a, b) => b.combatPower - a.combatPower);
 
-      let assignedParties = [];
+      const assignedParties = [];
       let supports = [...eligibleSupports];
       let dealers = [...eligibleDealers];
 
@@ -238,14 +242,14 @@ export default function Home() {
         const totalRemaining = supports.length + dealers.length;
         const targetPartyCount = Math.max(1, Math.ceil(totalRemaining / raid.type));
 
-        let tempParties = Array.from({ length: targetPartyCount }, () => ({ members: [], owners: new Set(), classes: new Set() }));
+        const tempParties = Array.from({ length: targetPartyCount }, () => ({ members: [], owners: new Set(), classes: new Set() }));
         let placedAny = false;
 
-        for (let sup of [...supports]) {
+        for (const sup of [...supports]) {
           tempParties.sort((a, b) => a.members.reduce((s, x) => s + x.combatPower, 0) - b.members.reduce((s, x) => s + x.combatPower, 0));
           
           let placed = false;
-          for (let p of tempParties) {
+          for (const p of tempParties) {
             if (p.members.length < raid.type && p.members.filter(x => x.role === "서포터").length < (raid.type === 8 ? 2 : 1) && !p.owners.has(sup.owner) && !p.classes.has(sup.className)) {
               p.members.push(sup);
               p.owners.add(sup.owner);
@@ -259,25 +263,23 @@ export default function Home() {
           if (!placed) break;
         }
 
-        for (let dlr of [...dealers]) {
+        for (const dlr of [...dealers]) {
           tempParties.sort((a, b) => a.members.reduce((s, x) => s + x.combatPower, 0) - b.members.reduce((s, x) => s + x.combatPower, 0));
 
-          let placed = false;
-          for (let p of tempParties) {
+          for (const p of tempParties) {
             const currentDlrCount = p.members.filter(x => x.role === "딜러").length;
             if (p.members.length < raid.type && currentDlrCount < 3 && !p.owners.has(dlr.owner) && !p.classes.has(dlr.className)) {
               p.members.push(dlr);
               p.owners.add(dlr.owner);
               p.classes.add(dlr.className);
               dealers = dealers.filter(d => d !== dlr);
-              placed = true;
               placedAny = true;
               break;
             }
           }
         }
 
-        let validParties = tempParties.filter(p => p.members.length >= 2);
+        const validParties = tempParties.filter(p => p.members.length >= 2);
         if (validParties.length > 0) {
           validParties.forEach(p => assignedParties.push(p.members));
         }
@@ -285,7 +287,7 @@ export default function Home() {
         if (!placedAny) break;
       }
 
-      let raidParties = [];
+      const raidParties = [];
       assignedParties.forEach((party, idx) => {
         party.forEach(m => {
           const key = m.charName + m.owner;
@@ -321,7 +323,7 @@ export default function Home() {
       const assignedCharKeys = new Set();
       assignedParties.forEach(p => p.forEach(m => assignedCharKeys.add(m.charName + m.owner)));
 
-      let trueLeftovers = [...eligibleSupports, ...eligibleDealers].filter(c => !assignedCharKeys.has(c.charName + c.owner));
+      const trueLeftovers = [...eligibleSupports, ...eligibleDealers].filter(c => !assignedCharKeys.has(c.charName + c.owner));
 
       if (trueLeftovers.length > 0) {
         trueLeftovers.forEach(m => {

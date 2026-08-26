@@ -286,55 +286,66 @@ export default function Home() {
       let dealers = [...eligibleDealers];
 
       while (supports.length > 0 || dealers.length > 0) {
-        const totalRemaining = supports.length + dealers.length;
-        const targetPartyCount = Math.max(1, Math.ceil(totalRemaining / raid.type));
+        let remS = supports.length;
+        let remD = dealers.length;
+        const maxSup = raid.type === 8 ? 2 : 1;
+        const maxDlr = raid.type === 8 ? 6 : 3;
+        
+        const tempParties = [];
+        while(remS > 0 || remD > 0) {
+          let takeS = Math.min(remS, maxSup);
+          let takeD = Math.min(remD, maxDlr);
+          tempParties.push({ targetSup: takeS, targetDlr: takeD, members: [], owners: new Set(), classes: new Set() });
+          remS -= takeS;
+          remD -= takeD;
+        }
 
-        const tempParties = Array.from({ length: targetPartyCount }, () => ({ members: [], owners: new Set(), classes: new Set() }));
         let placedAny = false;
-
-        const sortTempParties = (parties) => {
-          parties.sort((a, b) => {
-            if (a.members.length !== b.members.length) {
-              return a.members.length - b.members.length;
-            }
-            const sumA = a.members.reduce((sum, x) => sum + x.combatPower, 0);
-            const sumB = b.members.reduce((sum, x) => sum + x.combatPower, 0);
-            return sumA - sumB;
-          });
-        };
+        const getAvg = (p) => p.members.length === 0 ? 0 : p.members.reduce((sum, x) => sum + x.combatPower, 0) / p.members.length;
 
         for (const sup of [...supports]) {
-          sortTempParties(tempParties);
-          
-          let placed = false;
-          for (const p of tempParties) {
-            if (p.members.length < raid.type && p.members.filter(x => x.role === "서포터").length < (raid.type === 8 ? 2 : 1) && !p.owners.has(sup.owner) && !p.classes.has(sup.className)) {
-              p.members.push(sup);
-              p.owners.add(sup.owner);
-              p.classes.add(sup.className);
-              supports = supports.filter(s => s !== sup);
-              placed = true;
-              placedAny = true;
-              break;
-            }
+          const eligible = tempParties.filter(p => {
+            const currentSup = p.members.filter(x => x.role === "서포터").length;
+            return currentSup < p.targetSup && !p.owners.has(sup.owner) && !p.classes.has(sup.className);
+          });
+
+          if (eligible.length > 0) {
+            eligible.sort((a, b) => {
+              const remA = a.targetSup - a.members.filter(x => x.role === "서포터").length;
+              const remB = b.targetSup - b.members.filter(x => x.role === "서포터").length;
+              if (remA !== remB) return remB - remA;
+              return getAvg(a) - getAvg(b);
+            });
+            
+            const p = eligible[0];
+            p.members.push(sup);
+            p.owners.add(sup.owner);
+            p.classes.add(sup.className);
+            supports = supports.filter(s => s !== sup);
+            placedAny = true;
           }
-          if (!placed) break;
         }
 
         for (const dlr of [...dealers]) {
-          sortTempParties(tempParties);
+          const eligible = tempParties.filter(p => {
+            const currentDlr = p.members.filter(x => x.role === "딜러").length;
+            return currentDlr < p.targetDlr && !p.owners.has(dlr.owner) && !p.classes.has(dlr.className);
+          });
 
-          for (const p of tempParties) {
-            const currentDlrCount = p.members.filter(x => x.role === "딜러").length;
-            const maxDlr = raid.type === 8 ? 6 : 3;
-            if (p.members.length < raid.type && currentDlrCount < maxDlr && !p.owners.has(dlr.owner) && !p.classes.has(dlr.className)) {
-              p.members.push(dlr);
-              p.owners.add(dlr.owner);
-              p.classes.add(dlr.className);
-              dealers = dealers.filter(d => d !== dlr);
-              placedAny = true;
-              break;
-            }
+          if (eligible.length > 0) {
+            eligible.sort((a, b) => {
+              const remA = a.targetDlr - a.members.filter(x => x.role === "딜러").length;
+              const remB = b.targetDlr - b.members.filter(x => x.role === "딜러").length;
+              if (remA !== remB) return remB - remA;
+              return getAvg(a) - getAvg(b);
+            });
+            
+            const p = eligible[0];
+            p.members.push(dlr);
+            p.owners.add(dlr.owner);
+            p.classes.add(dlr.className);
+            dealers = dealers.filter(d => d !== dlr);
+            placedAny = true;
           }
         }
 

@@ -102,6 +102,50 @@ export default function Home() {
     saveToLocalStorage(memberList.filter(m => m.owner !== ownerName), []);
   };
 
+  const handleRefreshMember = async (ownerName) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/character?name=${encodeURIComponent(ownerName)}`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data)) {
+        const categories = [...new Set(RAID_LIST.map(r => r.category))];
+        const updatedMembers = memberList.map(m => {
+          if (m.owner === ownerName) {
+            const newChars = data.map(char => {
+              const existingChar = m.characters.find(c => c.charName === char.CharacterName);
+              const defaultAllowed = categories.map(cat => {
+                const raidsInCat = RAID_LIST.filter(r => r.category === cat && char.ItemLevel >= r.minLevel);
+                if (raidsInCat.length === 0) return null;
+                const highest = raidsInCat.reduce((max, r) => r.minLevel > max.minLevel ? r : max, raidsInCat[0]);
+                return highest.id;
+              }).filter(Boolean);
+
+              return {
+                charName: char.CharacterName,
+                className: char.CharacterClassName,
+                level: char.ItemLevel,
+                combatPower: char.CombatPower,
+                characterImage: char.CharacterImage,
+                role: existingChar ? existingChar.role : (["바드", "홀리나이트", "도화가", "발키리"].includes(char.CharacterClassName) ? "서포터" : "딜러"),
+                isExcluded: existingChar ? existingChar.isExcluded : false,
+                allowedRaids: existingChar ? existingChar.allowedRaids : defaultAllowed
+              };
+            });
+            return { ...m, characters: newChars };
+          }
+          return m;
+        });
+        saveToLocalStorage(updatedMembers, partyResult);
+      } else {
+        alert("원정대 갱신에 실패했습니다.");
+      }
+    } catch {
+      alert("원정대 갱신 중 에러가 발생했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleToggleExclude = (ownerName, charName) => {
     const updatedMembers = memberList.map(m => {
       if (m.owner === ownerName) {
@@ -168,28 +212,30 @@ export default function Home() {
     const sorted = [...members].sort((a, b) => b.combatPower - a.combatPower);
     const g1 = [];
     const g2 = [];
-    const usedOwners = new Set();
-    const usedClasses = new Set();
 
     for (const m of sorted) {
-      const currentDlrCount = g1.filter(x => x.role === "딜러").length;
+      const g1Total = g1.reduce((sum, x) => sum + x.combatPower, 0);
+      const g2Total = g2.reduce((sum, x) => sum + x.combatPower, 0);
+      
       const isDlr = m.role === "딜러";
-      if (g1.length < 4 && (!isDlr || currentDlrCount < 3) && !usedOwners.has(m.owner) && !usedClasses.has(m.className)) {
-        g1.push(m);
-        usedOwners.add(m.owner);
-        usedClasses.add(m.className);
-      }
-    }
+      const g1DlrCount = g1.filter(x => x.role === "딜러").length;
+      const g1SupCount = g1.length - g1DlrCount;
+      const g2DlrCount = g2.filter(x => x.role === "딜러").length;
+      const g2SupCount = g2.length - g2DlrCount;
 
-    for (const m of sorted) {
-      if (!g1.includes(m) && g2.length < 4) {
-        const currentDlrCount = g2.filter(x => x.role === "딜러").length;
-        const isDlr = m.role === "딜러";
-        if ((!isDlr || currentDlrCount < 3) && !usedOwners.has(m.owner) && !usedClasses.has(m.className)) {
+      const canGoG1 = g1.length < 4 && (isDlr ? g1DlrCount < 3 : g1SupCount < 1);
+      const canGoG2 = g2.length < 4 && (isDlr ? g2DlrCount < 3 : g2SupCount < 1);
+
+      if (canGoG1 && canGoG2) {
+        if (g1Total <= g2Total) {
+          g1.push(m);
+        } else {
           g2.push(m);
-          usedOwners.add(m.owner);
-          usedClasses.add(m.className);
         }
+      } else if (canGoG1) {
+        g1.push(m);
+      } else if (canGoG2) {
+        g2.push(m);
       }
     }
 
@@ -269,7 +315,8 @@ export default function Home() {
 
           for (const p of tempParties) {
             const currentDlrCount = p.members.filter(x => x.role === "딜러").length;
-            if (p.members.length < raid.type && currentDlrCount < 3 && !p.owners.has(dlr.owner) && !p.classes.has(dlr.className)) {
+            const maxDlr = raid.type === 8 ? 6 : 3;
+            if (p.members.length < raid.type && currentDlrCount < maxDlr && !p.owners.has(dlr.owner) && !p.classes.has(dlr.className)) {
               p.members.push(dlr);
               p.owners.add(dlr.owner);
               p.classes.add(dlr.className);
@@ -708,12 +755,22 @@ export default function Home() {
                       <span className="w-2 h-2 rounded-full bg-yellow-400"></span>
                       {m.owner} 원정대
                     </div>
-                    <button 
-                      onClick={() => handleRemoveMember(m.owner)} 
-                      className={`${isDarkMode ? 'text-gray-500 hover:text-red-400 bg-gray-900 border-gray-800' : 'text-gray-400 hover:text-red-600 bg-white border-gray-200'} font-bold px-2 py-0.5 text-xs border rounded-lg transition-all`}
-                    >
-                      삭제 ✕
-                    </button>
+                    <div className="flex gap-1.5">
+                      <button 
+                        onClick={() => handleRefreshMember(m.owner)} 
+                        title="원정대 정보 갱신"
+                        className={`${isDarkMode ? 'text-gray-400 hover:text-blue-400 bg-gray-900 border-gray-800' : 'text-gray-500 hover:text-blue-600 bg-white border-gray-200'} font-bold px-2 py-0.5 text-xs border rounded-lg transition-all flex items-center gap-1`}
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                        갱신
+                      </button>
+                      <button 
+                        onClick={() => handleRemoveMember(m.owner)} 
+                        className={`${isDarkMode ? 'text-gray-500 hover:text-red-400 bg-gray-900 border-gray-800' : 'text-gray-400 hover:text-red-600 bg-white border-gray-200'} font-bold px-2 py-0.5 text-xs border rounded-lg transition-all`}
+                      >
+                        삭제 ✕
+                      </button>
+                    </div>
                   </div>
                   
                   <div className="text-xs space-y-2 max-h-56 overflow-y-auto pr-1">

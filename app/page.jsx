@@ -286,13 +286,8 @@ export default function Home() {
       let dealers = [...eligibleDealers];
 
       while (supports.length > 0 || dealers.length > 0) {
-        const maxFullPartiesBySup = Math.floor(supports.length / (raid.type === 8 ? 2 : 1));
-        const maxFullPartiesByDlr = Math.floor(dealers.length / (raid.type === 8 ? 6 : 3));
-        let targetPartyCount = Math.min(maxFullPartiesBySup, maxFullPartiesByDlr);
-        
-        if (targetPartyCount === 0) {
-          targetPartyCount = 1;
-        }
+        const totalRemaining = supports.length + dealers.length;
+        const targetPartyCount = Math.max(1, Math.ceil(totalRemaining / raid.type));
 
         const tempParties = Array.from({ length: targetPartyCount }, () => ({ members: [], owners: new Set(), classes: new Set() }));
         let placedAny = false;

@@ -286,14 +286,30 @@ export default function Home() {
       let dealers = [...eligibleDealers];
 
       while (supports.length > 0 || dealers.length > 0) {
-        const totalRemaining = supports.length + dealers.length;
-        const targetPartyCount = Math.max(1, Math.ceil(totalRemaining / raid.type));
+        const maxFullPartiesBySup = Math.floor(supports.length / (raid.type === 8 ? 2 : 1));
+        const maxFullPartiesByDlr = Math.floor(dealers.length / (raid.type === 8 ? 6 : 3));
+        let targetPartyCount = Math.min(maxFullPartiesBySup, maxFullPartiesByDlr);
+        
+        if (targetPartyCount === 0) {
+          targetPartyCount = 1;
+        }
 
         const tempParties = Array.from({ length: targetPartyCount }, () => ({ members: [], owners: new Set(), classes: new Set() }));
         let placedAny = false;
 
+        const sortTempParties = (parties) => {
+          parties.sort((a, b) => {
+            if (a.members.length !== b.members.length) {
+              return a.members.length - b.members.length;
+            }
+            const sumA = a.members.reduce((sum, x) => sum + x.combatPower, 0);
+            const sumB = b.members.reduce((sum, x) => sum + x.combatPower, 0);
+            return sumA - sumB;
+          });
+        };
+
         for (const sup of [...supports]) {
-          tempParties.sort((a, b) => a.members.reduce((s, x) => s + x.combatPower, 0) - b.members.reduce((s, x) => s + x.combatPower, 0));
+          sortTempParties(tempParties);
           
           let placed = false;
           for (const p of tempParties) {
@@ -311,7 +327,7 @@ export default function Home() {
         }
 
         for (const dlr of [...dealers]) {
-          tempParties.sort((a, b) => a.members.reduce((s, x) => s + x.combatPower, 0) - b.members.reduce((s, x) => s + x.combatPower, 0));
+          sortTempParties(tempParties);
 
           for (const p of tempParties) {
             const currentDlrCount = p.members.filter(x => x.role === "딜러").length;

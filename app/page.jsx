@@ -45,7 +45,9 @@ const CLASS_ICONS = {
   "리퍼": "/icons/Reaper.svg",
   "소울이터": "/icons/Souleater.svg",
   "도화가": "/icons/Artist.svg",
-  "기상술사": "/icons/Aeromancer.svg"
+  "기상술사": "/icons/Aeromancer.svg",
+  "환수사": "/icons/Wildsoul.svg",
+  "차원술사": "/icons/dimension_master.svg"
 };
 
 export default function Home() {
@@ -1008,11 +1010,40 @@ export default function Home() {
                         <td className={`py-3 px-4 ${isDarkMode ? 'text-gray-200' : 'text-gray-800'} font-medium`}>
                           {party.type === 8 && !isSingle ? (
                             <div className="space-y-1">
-                              <div><strong className={isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}>1파티:</strong> {(party.g1 || []).map(m => m.charName).join(", ")}</div>
-                              <div><strong className={isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}>2파티:</strong> {(party.g2 || []).map(m => m.charName).join(", ")}</div>
+                              <div>
+                                <strong className={isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}>1파티:</strong>{' '}
+                                {(party.g1 || []).map((m, idx) => (
+                                  <span key={idx} className="inline-flex items-center ml-1">
+                                    {CLASS_ICONS[m.className] && (
+                                      <img src={CLASS_ICONS[m.className]} alt={m.className} className={`w-3 h-3 mr-0.5 ${isDarkMode ? 'opacity-90' : 'invert opacity-80'}`} />
+                                    )}
+                                    {m.charName}{idx < (party.g1 || []).length - 1 && ","}
+                                  </span>
+                                ))}
+                              </div>
+                              <div>
+                                <strong className={isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}>2파티:</strong>{' '}
+                                {(party.g2 || []).map((m, idx) => (
+                                  <span key={idx} className="inline-flex items-center ml-1">
+                                    {CLASS_ICONS[m.className] && (
+                                      <img src={CLASS_ICONS[m.className]} alt={m.className} className={`w-3 h-3 mr-0.5 ${isDarkMode ? 'opacity-90' : 'invert opacity-80'}`} />
+                                    )}
+                                    {m.charName}{idx < (party.g2 || []).length - 1 && ","}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
                           ) : (
-                            <div>{(party.members || []).map(m => m.charName).join(", ")}</div>
+                            <div>
+                              {(party.members || []).map((m, idx) => (
+                                <span key={idx} className="inline-flex items-center mr-1">
+                                  {CLASS_ICONS[m.className] && (
+                                    <img src={CLASS_ICONS[m.className]} alt={m.className} className={`w-3 h-3 mr-0.5 ${isDarkMode ? 'opacity-90' : 'invert opacity-80'}`} />
+                                  )}
+                                  {m.charName}{idx < (party.members || []).length - 1 && ","}
+                                </span>
+                              ))}
+                            </div>
                           )}
                         </td>
                         <td className="py-3 px-4 text-right font-semibold">

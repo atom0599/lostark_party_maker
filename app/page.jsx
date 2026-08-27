@@ -49,7 +49,17 @@ const CLASS_ICONS = {
   "환수사": "/icons/Wildsoul.svg",
   "차원술사": "/icons/dimension_master.svg",
   "발키리": "/icons/Valkyrie.svg",
-  "가디언나이트": "/icons/Dragon_knight.svg"
+  "가디언나이트": "/icons/Dragon_knight.svg",
+  // 뿌리 클래스(기본 직업) 매핑
+  "전사": "/icons/warrior.svg",
+  "전사(여)": "/icons/warrior_female.svg",
+  "무도가": "/icons/fighter.svg",
+  "무도가(남)": "/icons/fighter_male.svg",
+  "헌터": "/icons/hunter.svg",
+  "건너(여)": "/icons/hunter_female.svg",
+  "마법사": "/icons/magician.svg",
+  "암살자": "/icons/assassin.svg",
+  "스페셜리스트": "/icons/specialist.svg"
 };
 
 export default function Home() {

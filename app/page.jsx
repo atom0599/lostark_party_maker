@@ -19,6 +19,35 @@ const RAID_LIST = [
   { id: 13, category: "종막", name: "종막 하드", type: 8, minLevel: 1730, reqSup: 2, reqDlr: 6 },
 ];
 
+const CLASS_ICONS = {
+  "버서커": "/icons/Berserker.svg",
+  "워로드": "/icons/Warlord.svg",
+  "디스트로이어": "/icons/Destroyer.svg",
+  "홀리나이트": "/icons/Holyknight.svg",
+  "슬레이어": "/icons/Slayer.svg",
+  "배틀마스터": "/icons/Battlemaster.svg",
+  "인파이터": "/icons/Infighter.svg",
+  "기공사": "/icons/Soulmaster.svg",
+  "창술사": "/icons/Lancemaster.svg",
+  "스트라이커": "/icons/Striker.svg",
+  "브레이커": "/icons/Breaker.svg",
+  "데빌헌터": "/icons/Devilhunter.svg",
+  "블래스터": "/icons/Blaster.svg",
+  "호크아이": "/icons/Hawkeye.svg",
+  "스카우터": "/icons/Scouter.svg",
+  "건슬링어": "/icons/Gunslinger.svg",
+  "바드": "/icons/Bard.svg",
+  "서머너": "/icons/Summoner.svg",
+  "아르카나": "/icons/Arcana.svg",
+  "소서리스": "/icons/Elementalmaster.svg",
+  "블레이드": "/icons/Blade.svg",
+  "데모닉": "/icons/Demonic.svg",
+  "리퍼": "/icons/Reaper.svg",
+  "소울이터": "/icons/Souleater.svg",
+  "도화가": "/icons/Artist.svg",
+  "기상술사": "/icons/Aeromancer.svg"
+};
+
 export default function Home() {
   const [searchName, setSearchName] = useState("");
   const [memberList, setMemberList] = useState([]);
@@ -490,7 +519,13 @@ export default function Home() {
             {member.charName}
           </span>
           <div className="flex items-center gap-2 mt-0.5">
-            <span className={`text-[11px] ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>직업: <strong className={isDarkMode ? 'text-gray-300' : 'text-gray-800'}>{member.className}</strong></span>
+            <span className={`text-[11px] flex items-center gap-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              직업: 
+              {CLASS_ICONS[member.className] && (
+                <img src={CLASS_ICONS[member.className]} alt={member.className} className={`w-3.5 h-3.5 ${isDarkMode ? 'invert opacity-80' : 'opacity-70'}`} />
+              )}
+              <strong className={isDarkMode ? 'text-gray-300' : 'text-gray-800'}>{member.className}</strong>
+            </span>
             
             {isHybrid ? (
               <button 
@@ -583,7 +618,13 @@ export default function Home() {
 
         <div className="flex flex-col min-w-0 z-10 mt-1">
           <span className={`font-bold text-sm truncate drop-shadow-md ${isTargetOwner ? (isDarkMode ? 'text-yellow-200' : 'text-yellow-800') : (isDarkMode ? 'text-gray-100' : 'text-gray-900')}`}>{member.charName}</span>
-          <span className={`text-[10px] truncate ${isTargetOwner ? (isDarkMode ? 'text-yellow-400 font-medium' : 'text-yellow-700 font-medium') : (isDarkMode ? 'text-gray-300' : 'text-gray-600')}`}>{member.owner} · {member.className}</span>
+          <span className={`text-[10px] truncate flex items-center gap-1 ${isTargetOwner ? (isDarkMode ? 'text-yellow-400 font-medium' : 'text-yellow-700 font-medium') : (isDarkMode ? 'text-gray-300' : 'text-gray-600')}`}>
+            {member.owner} · 
+            {CLASS_ICONS[member.className] && (
+              <img src={CLASS_ICONS[member.className]} alt={member.className} className={`w-3 h-3 ${isDarkMode ? 'invert opacity-80' : 'opacity-70'}`} />
+            )}
+            {member.className}
+          </span>
         </div>
 
         <div className="flex items-center gap-2 z-10 mt-2">

@@ -47,7 +47,9 @@ const CLASS_ICONS = {
   "도화가": "/icons/Artist.svg",
   "기상술사": "/icons/Aeromancer.svg",
   "환수사": "/icons/Wildsoul.svg",
-  "차원술사": "/icons/dimension_master.svg"
+  "차원술사": "/icons/dimension_master.svg",
+  "발키리": "/icons/Valkyrie.svg",
+  "가디언나이트": "/icons/Dragon_knight.svg"
 };
 
 export default function Home() {

@@ -522,7 +522,7 @@ export default function Home() {
             <span className={`text-[11px] flex items-center gap-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               직업: 
               {CLASS_ICONS[member.className] && (
-                <img src={CLASS_ICONS[member.className]} alt={member.className} className={`w-3.5 h-3.5 ${isDarkMode ? 'invert opacity-80' : 'opacity-70'}`} />
+                <img src={CLASS_ICONS[member.className]} alt={member.className} className={`w-3.5 h-3.5 ${isDarkMode ? 'opacity-90' : 'invert opacity-80'}`} />
               )}
               <strong className={isDarkMode ? 'text-gray-300' : 'text-gray-800'}>{member.className}</strong>
             </span>
@@ -621,7 +621,7 @@ export default function Home() {
           <span className={`text-[10px] truncate flex items-center gap-1 ${isTargetOwner ? (isDarkMode ? 'text-yellow-400 font-medium' : 'text-yellow-700 font-medium') : (isDarkMode ? 'text-gray-300' : 'text-gray-600')}`}>
             {member.owner} · 
             {CLASS_ICONS[member.className] && (
-              <img src={CLASS_ICONS[member.className]} alt={member.className} className={`w-3 h-3 ${isDarkMode ? 'invert opacity-80' : 'opacity-70'}`} />
+              <img src={CLASS_ICONS[member.className]} alt={member.className} className={`w-3 h-3 ${isDarkMode ? 'opacity-90' : 'invert opacity-80'}`} />
             )}
             {member.className}
           </span>

@@ -321,8 +321,9 @@ export default function Home() {
         }
       });
 
-      eligibleSupports.sort((a, b) => b.combatPower - a.combatPower);
-      eligibleDealers.sort((a, b) => b.combatPower - a.combatPower);
+      // 전투력이 낮은 캐릭터 위주로 먼저 배치하도록 오름차순 정렬
+      eligibleSupports.sort((a, b) => a.combatPower - b.combatPower);
+      eligibleDealers.sort((a, b) => a.combatPower - b.combatPower);
 
       const assignedParties = [];
       let supports = [...eligibleSupports];
@@ -520,10 +521,11 @@ export default function Home() {
             <button 
               type="button"
               onClick={() => setSelectedCharForConfig({ owner: ownerName, char: member })}
-              className={`${isDarkMode ? 'bg-gray-800 hover:bg-gray-700 text-yellow-400 border-gray-700' : 'bg-gray-100 hover:bg-gray-200 text-yellow-600 border-gray-300'} text-xs px-1.5 py-0.5 rounded-md border transition-all shadow-sm`}
-              title="이 캐릭터가 갈 레이드 세부 설정"
+              className={`${isDarkMode ? 'bg-gray-800 hover:bg-gray-700 text-yellow-400 border-gray-700' : 'bg-gray-100 hover:bg-gray-200 text-yellow-600 border-gray-300'} text-xs px-2 py-0.5 rounded-md border transition-all shadow-sm flex items-center gap-1`}
+              title="이 캐릭터의 레이드 클리어 여부 및 매칭 설정"
             >
-              ⚙️
+              <span>⚙️</span>
+              <span>클리어 체크</span>
             </button>
           </div>
         </div>
@@ -880,7 +882,9 @@ export default function Home() {
               </div>
 
               <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
-                <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>이 캐릭터가 참여할 수 있는 레이드를 선택하세요. 레벨 조건을 만족하더라도 체크를 해제하면 자동 조합에서 제외됩니다.</p>
+                <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  이 캐릭터가 매칭될 레이드를 선택하세요. <b>이미 다녀온 레이드(클리어)</b>는 체크를 해제(✅)하면 파티 매칭에서 제외됩니다.
+                </p>
                 
                 <div className="grid grid-cols-1 gap-2">
                   {RAID_LIST.map((raid) => {
@@ -912,8 +916,8 @@ export default function Home() {
                             <span className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'} ml-2`}>(권장 Lv.{raid.minLevel})</span>
                           </div>
                         </div>
-                        <span className={`text-xs font-bold ${isLevelMet ? (isChecked ? (isDarkMode ? 'text-yellow-400' : 'text-yellow-600') : (isDarkMode ? 'text-gray-500' : 'text-gray-400')) : 'text-red-500'}`}>
-                          {isLevelMet ? (isChecked ? '참여함' : '제외됨') : '레벨 미달'}
+                        <span className={`text-xs font-bold ${isLevelMet ? (isChecked ? (isDarkMode ? 'text-yellow-400' : 'text-yellow-600') : (isDarkMode ? 'text-green-400' : 'text-green-600')) : 'text-red-500'}`}>
+                          {isLevelMet ? (isChecked ? '매칭 참여' : '✅ 클리어(제외)') : '레벨 미달'}
                         </span>
                       </label>
                     );

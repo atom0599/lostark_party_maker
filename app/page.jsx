@@ -285,6 +285,37 @@ export default function Home() {
     return { g1, g2, members: [...g1, ...g2] };
   };
 
+  const handlePartyClear = (party) => {
+    if (party.type === "single") {
+      alert("미편성된 캐릭터들은 개별적으로 클리어 체크를 진행해주세요.");
+      return;
+    }
+    
+    if (!window.confirm(`[${party.raidName}]에 포함된 모든 캐릭터를 '클리어(제외)' 처리하시겠습니까?`)) return;
+    
+    const raidIdToClear = party.originalRaidId;
+    
+    const newMemberList = memberList.map(m => {
+      let isModified = false;
+      const newChars = m.characters.map(c => {
+        const isMemberInParty = (party.members || []).some(pm => pm.charName === c.charName && pm.owner === m.ownerName);
+        if (isMemberInParty) {
+          isModified = true;
+          const currentAllowed = c.allowedRaids || RAID_LIST.filter(r => c.level >= r.minLevel).map(r => r.id);
+          const newAllowed = currentAllowed.filter(id => id !== raidIdToClear);
+          return { ...c, allowedRaids: newAllowed };
+        }
+        return c;
+      });
+      return isModified ? { ...m, characters: newChars } : m;
+    });
+    
+    setMemberList(newMemberList);
+    saveToLocalStorage(newMemberList, partyResult);
+    
+    alert("✅ 해당 파티 인원의 클리어 처리가 완료되었습니다.\n다시 [자동 파티 짜기]를 누르면 매칭에서 제외됩니다.");
+  };
+
   const generateParties = () => {
     if (memberList.length === 0) return alert("공대원 원정대를 먼저 등록해주세요!");
 
@@ -1005,6 +1036,7 @@ export default function Home() {
                     <th className="py-3 px-4">레이드 명</th>
                     <th className="py-3 px-4">참여 캐릭터 이름 목록</th>
                     <th className="py-3 px-4 text-right">총 전투력 / 평균</th>
+                    <th className="py-3 px-4 w-20 text-center">관리</th>
                   </tr>
                 </thead>
                 <tbody className={`divide-y ${isDarkMode ? 'divide-gray-800/60' : 'divide-gray-200'}`}>
@@ -1071,6 +1103,17 @@ export default function Home() {
                             <span className={isDarkMode ? 'text-indigo-300' : 'text-indigo-700'}>-</span>
                           )}
                         </td>
+                        <td className="py-3 px-4 text-center">
+                          {!isSingle && (
+                            <button
+                              onClick={() => handlePartyClear(party)}
+                              className={`text-[10px] px-2 py-1 rounded-lg border font-bold transition-all shadow-sm ${isDarkMode ? 'bg-green-900/60 border-green-800 text-green-400 hover:bg-green-800' : 'bg-green-100 border-green-300 text-green-700 hover:bg-green-200'}`}
+                              title="이 파티 전원 클리어 처리"
+                            >
+                              ✅ 클리어
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -1118,10 +1161,19 @@ export default function Home() {
                         </div>
                         
                         {!isSingle && (
-                          <div className={`${isDarkMode ? 'bg-blue-950/80 border-blue-900/50 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700'} border px-3.5 py-2 rounded-xl font-semibold shadow text-xs flex items-center gap-3`}>
-                            <span>총 전투력 {totalCP.toLocaleString()}</span>
-                            <span className={isDarkMode ? 'text-gray-500' : 'text-gray-400'}>|</span>
-                            <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>평균 {avgCP.toLocaleString()}</span>
+                          <div className="flex items-center gap-2 flex-wrap justify-end">
+                            <button
+                              onClick={() => handlePartyClear(party)}
+                              className={`text-xs px-3 py-2 rounded-xl border font-bold transition-all shadow flex items-center gap-1 ${isDarkMode ? 'bg-green-900/60 border-green-800 text-green-400 hover:bg-green-800' : 'bg-green-100 border-green-300 text-green-700 hover:bg-green-200'}`}
+                              title="이 파티 인원 전체의 해당 레이드를 클리어(제외) 처리합니다."
+                            >
+                              ✅ 전원 클리어
+                            </button>
+                            <div className={`${isDarkMode ? 'bg-blue-950/80 border-blue-900/50 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700'} border px-3.5 py-2 rounded-xl font-semibold shadow text-xs flex items-center gap-3`}>
+                              <span>총 전투력 {totalCP.toLocaleString()}</span>
+                              <span className={isDarkMode ? 'text-gray-500' : 'text-gray-400'}>|</span>
+                              <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>평균 {avgCP.toLocaleString()}</span>
+                            </div>
                           </div>
                         )}
                       </div>

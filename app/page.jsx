@@ -1032,11 +1032,11 @@ export default function Home() {
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className={`border-b ${isDarkMode ? 'border-gray-800 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
-                    <th className="py-3 px-4 w-12 text-center">번호</th>
-                    <th className="py-3 px-4">레이드 명</th>
+                    <th className="py-3 px-4 w-16 text-center whitespace-nowrap">번호</th>
+                    <th className="py-3 px-4 whitespace-nowrap">레이드 명</th>
                     <th className="py-3 px-4">참여 캐릭터 이름 목록</th>
-                    <th className="py-3 px-4 text-right">총 전투력 / 평균</th>
-                    <th className="py-3 px-4 w-20 text-center">관리</th>
+                    <th className="py-3 px-4 text-right whitespace-nowrap">총 전투력 / 평균</th>
+                    <th className="py-3 px-4 w-24 text-center whitespace-nowrap">관리</th>
                   </tr>
                 </thead>
                 <tbody className={`divide-y ${isDarkMode ? 'divide-gray-800/60' : 'divide-gray-200'}`}>
@@ -1107,7 +1107,7 @@ export default function Home() {
                           {!isSingle && (
                             <button
                               onClick={() => handlePartyClear(party)}
-                              className={`text-[10px] px-2 py-1 rounded-lg border font-bold transition-all shadow-sm ${isDarkMode ? 'bg-green-900/60 border-green-800 text-green-400 hover:bg-green-800' : 'bg-green-100 border-green-300 text-green-700 hover:bg-green-200'}`}
+                              className={`text-[10px] px-2 py-1 rounded-lg border font-bold transition-all shadow-sm whitespace-nowrap ${isDarkMode ? 'bg-green-900/60 border-green-800 text-green-400 hover:bg-green-800' : 'bg-green-100 border-green-300 text-green-700 hover:bg-green-200'}`}
                               title="이 파티 전원 클리어 처리"
                             >
                               ✅ 클리어

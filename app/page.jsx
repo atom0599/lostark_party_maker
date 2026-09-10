@@ -282,9 +282,8 @@ export default function Home() {
     }
   };
 
-  // 직업/원정대(부계정) 중복 없이, 최대한 많은 캐릭터를 파티에 채워 넣는 배치기.
-  // 파티 수(n)를 1..(전체/2)까지 모두 시도해서 "가장 많이 편성되는" 결과를 고르고,
-  // 편성 인원이 같으면 파티 수가 적은(= 더 꽉 찬) 쪽을 택한다.
+  // 직업/원정대(부계정) 중복 없이 최대한 많은 캐릭터를 편성하되,
+  // 앞 파티부터 꽉 채우도록(풀파티 우선) 배치한다.
   const packRaid = (sups, dlrs, type) => {
     const maxSup = type === 8 ? 2 : 1;
     const maxDlr = type === 8 ? 6 : 3;
@@ -306,7 +305,8 @@ export default function Home() {
     const sortedSups = [...sups].sort(prio);
     const sortedDlrs = [...dlrs].sort(prio);
 
-    const tryPack = (n) => {
+    // mode: "fill" = 가장 꽉 찬 파티부터 채움(풀파티 우선), "spread" = 가장 빈 파티부터(전원 편성 보조)
+    const tryPack = (n, mode) => {
       const parties = Array.from({ length: n }, () => ({
         members: [], owners: new Set(), classes: new Set(), sup: 0, dlr: 0,
       }));
@@ -319,8 +319,9 @@ export default function Home() {
           !p.classes.has(c.className)
         );
         if (fit.length === 0) return false;
-        // 인원이 가장 적은 파티부터 채워 고르게 → 전원 편성 확률 최대화
-        fit.sort((a, b) => a.members.length - b.members.length);
+        fit.sort((a, b) => mode === "fill"
+          ? b.members.length - a.members.length
+          : a.members.length - b.members.length);
         const p = fit[0];
         p.members.push(c);
         p.owners.add(c.ownerGroup);
@@ -338,16 +339,28 @@ export default function Home() {
         if (p.members.length >= 2) good.push(p.members);
         else rest.push(...p.members);
       }
-      return { parties: good, leftovers: rest, placed: all.length - rest.length };
+      const sizes = good.map(g => g.length);
+      return {
+        parties: good,
+        leftovers: rest,
+        placed: all.length - rest.length,
+        // 파티가 앞쪽부터 꽉 찼을수록 커지는 지표 (제곱합)
+        fullness: sizes.reduce((s, x) => s + x * x, 0),
+      };
     };
 
     const pcap = Math.max(1, Math.floor(all.length / 2));
     let best = null;
+    const better = (r) =>
+      !best ||
+      r.placed > best.placed ||
+      (r.placed === best.placed && r.fullness > best.fullness) ||
+      (r.placed === best.placed && r.fullness === best.fullness && r.parties.length < best.parties.length);
+
     for (let n = 1; n <= pcap; n++) {
-      const r = tryPack(n);
-      if (!best || r.placed > best.placed ||
-        (r.placed === best.placed && r.parties.length < best.parties.length)) {
-        best = r;
+      for (const mode of ["fill", "spread"]) {
+        const r = tryPack(n, mode);
+        if (better(r)) best = r;
       }
     }
     return best || { parties: [], leftovers: [...all] };

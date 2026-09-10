@@ -282,6 +282,77 @@ export default function Home() {
     }
   };
 
+  // 직업/원정대(부계정) 중복 없이, 최대한 많은 캐릭터를 파티에 채워 넣는 배치기.
+  // 파티 수(n)를 1..(전체/2)까지 모두 시도해서 "가장 많이 편성되는" 결과를 고르고,
+  // 편성 인원이 같으면 파티 수가 적은(= 더 꽉 찬) 쪽을 택한다.
+  const packRaid = (sups, dlrs, type) => {
+    const maxSup = type === 8 ? 2 : 1;
+    const maxDlr = type === 8 ? 6 : 3;
+    const all = [...sups, ...dlrs];
+    if (all.length < 2) return { parties: [], leftovers: [...all] };
+
+    const freq = {};
+    const ownerFreq = {};
+    all.forEach(c => {
+      freq[c.className] = (freq[c.className] || 0) + 1;
+      ownerFreq[c.ownerGroup] = (ownerFreq[c.ownerGroup] || 0) + 1;
+    });
+
+    // 같은 직업/같은 원정대가 많은 캐릭터를 먼저 배치(자리 선점) → 그다음 전투력 낮은 순
+    const prio = (a, b) =>
+      (freq[b.className] - freq[a.className]) ||
+      (ownerFreq[b.ownerGroup] - ownerFreq[a.ownerGroup]) ||
+      (a.combatPower - b.combatPower);
+    const sortedSups = [...sups].sort(prio);
+    const sortedDlrs = [...dlrs].sort(prio);
+
+    const tryPack = (n) => {
+      const parties = Array.from({ length: n }, () => ({
+        members: [], owners: new Set(), classes: new Set(), sup: 0, dlr: 0,
+      }));
+
+      const place = (c, isSup) => {
+        const fit = parties.filter(p =>
+          p.members.length < type &&
+          (isSup ? p.sup < maxSup : p.dlr < maxDlr) &&
+          !p.owners.has(c.ownerGroup) &&
+          !p.classes.has(c.className)
+        );
+        if (fit.length === 0) return false;
+        // 인원이 가장 적은 파티부터 채워 고르게 → 전원 편성 확률 최대화
+        fit.sort((a, b) => a.members.length - b.members.length);
+        const p = fit[0];
+        p.members.push(c);
+        p.owners.add(c.ownerGroup);
+        p.classes.add(c.className);
+        if (isSup) p.sup++; else p.dlr++;
+        return true;
+      };
+
+      const rest = [];
+      for (const c of sortedSups) if (!place(c, true)) rest.push(c);
+      for (const c of sortedDlrs) if (!place(c, false)) rest.push(c);
+
+      const good = [];
+      for (const p of parties) {
+        if (p.members.length >= 2) good.push(p.members);
+        else rest.push(...p.members);
+      }
+      return { parties: good, leftovers: rest, placed: all.length - rest.length };
+    };
+
+    const pcap = Math.max(1, Math.floor(all.length / 2));
+    let best = null;
+    for (let n = 1; n <= pcap; n++) {
+      const r = tryPack(n);
+      if (!best || r.placed > best.placed ||
+        (r.placed === best.placed && r.parties.length < best.parties.length)) {
+        best = r;
+      }
+    }
+    return best || { parties: [], leftovers: [...all] };
+  };
+
   const balanceEightManParty = (members) => {
     const sorted = [...members].sort((a, b) => b.combatPower - a.combatPower);
     const g1 = [];
@@ -452,85 +523,10 @@ export default function Home() {
         }
       });
 
-      // 전투력이 낮은 캐릭터 위주로 먼저 배치하도록 오름차순 정렬
-      eligibleSupports.sort((a, b) => a.combatPower - b.combatPower);
-      eligibleDealers.sort((a, b) => a.combatPower - b.combatPower);
-
-      const assignedParties = [];
-      let supports = [...eligibleSupports];
-      let dealers = [...eligibleDealers];
-
-      while (supports.length > 0 || dealers.length > 0) {
-        let remS = supports.length;
-        let remD = dealers.length;
-        const maxSup = raid.type === 8 ? 2 : 1;
-        const maxDlr = raid.type === 8 ? 6 : 3;
-        
-        const tempParties = [];
-        while(remS > 0 || remD > 0) {
-          let takeS = Math.min(remS, maxSup);
-          let takeD = Math.min(remD, maxDlr);
-          tempParties.push({ targetSup: takeS, targetDlr: takeD, members: [], owners: new Set(), classes: new Set() });
-          remS -= takeS;
-          remD -= takeD;
-        }
-
-        let placedAny = false;
-        const getAvg = (p) => p.members.length === 0 ? 0 : p.members.reduce((sum, x) => sum + x.combatPower, 0) / p.members.length;
-
-        for (const sup of [...supports]) {
-          const eligible = tempParties.filter(p => {
-            const currentSup = p.members.filter(x => x.role === "서포터").length;
-            return currentSup < p.targetSup && !p.owners.has(sup.ownerGroup) && !p.classes.has(sup.className);
-          });
-
-          if (eligible.length > 0) {
-            eligible.sort((a, b) => {
-              const remA = a.targetSup - a.members.filter(x => x.role === "서포터").length;
-              const remB = b.targetSup - b.members.filter(x => x.role === "서포터").length;
-              if (remA !== remB) return remB - remA;
-              return getAvg(a) - getAvg(b);
-            });
-            
-            const p = eligible[0];
-            p.members.push(sup);
-            p.owners.add(sup.ownerGroup);
-            p.classes.add(sup.className);
-            supports = supports.filter(s => s !== sup);
-            placedAny = true;
-          }
-        }
-
-        for (const dlr of [...dealers]) {
-          const eligible = tempParties.filter(p => {
-            const currentDlr = p.members.filter(x => x.role === "딜러").length;
-            return currentDlr < p.targetDlr && !p.owners.has(dlr.ownerGroup) && !p.classes.has(dlr.className);
-          });
-
-          if (eligible.length > 0) {
-            eligible.sort((a, b) => {
-              const remA = a.targetDlr - a.members.filter(x => x.role === "딜러").length;
-              const remB = b.targetDlr - b.members.filter(x => x.role === "딜러").length;
-              if (remA !== remB) return remB - remA;
-              return getAvg(a) - getAvg(b);
-            });
-            
-            const p = eligible[0];
-            p.members.push(dlr);
-            p.owners.add(dlr.ownerGroup);
-            p.classes.add(dlr.className);
-            dealers = dealers.filter(d => d !== dlr);
-            placedAny = true;
-          }
-        }
-
-        const validParties = tempParties.filter(p => p.members.length >= 2);
-        if (validParties.length > 0) {
-          validParties.forEach(p => assignedParties.push(p.members));
-        }
-
-        if (!placedAny) break;
-      }
+      // 직업/원정대 중복 없이, 최대한 많은 캐릭터를 파티에 채워 넣는다.
+      const packed = packRaid(eligibleSupports, eligibleDealers, raid.type);
+      const assignedParties = packed.parties;
+      const leftovers = packed.leftovers;
 
       const raidParties = [];
       assignedParties.forEach((party, idx) => {
@@ -564,56 +560,6 @@ export default function Home() {
           g2: g2
         });
       });
-
-      const assignedCharKeys = new Set();
-      assignedParties.forEach(p => p.forEach(m => assignedCharKeys.add(m.charName + m.owner)));
-
-      let leftovers = [...eligibleSupports, ...eligibleDealers].filter(c => !assignedCharKeys.has(c.charName + c.owner));
-
-      // 빈자리 채우기: 같은 직업 제한은 무시하고, 정원/역할/원정대(부계정) 조건만 지켜
-      // 이미 만들어진 파티의 빈 자리에 미편성 캐릭터를 채워 넣는다. (빈자리 있는데 미편성되는 문제 방지)
-      if (leftovers.length > 0) {
-        const maxSup = raid.type === 8 ? 2 : 1;
-        const maxDlr = raid.type === 8 ? 6 : 3;
-        const groupOf = (m) => m.ownerGroup || rootOwner(m.owner);
-        const roleOf = (m) => (m.role === "서포터" ? "서포터" : "딜러");
-        const subFits = (g, c) => {
-          const s = g.filter(m => roleOf(m) === "서포터").length;
-          const d = g.length - s;
-          return g.length < 4 && (roleOf(c) === "서포터" ? s < 1 : d < 3);
-        };
-
-        const still = [];
-        for (const c of leftovers) {
-          let placed = false;
-          const candidates = raidParties
-            .filter(rp => rp.type !== "single")
-            .sort((a, b) => (b.members || []).length - (a.members || []).length);
-
-          for (const rp of candidates) {
-            if ((rp.members || []).length >= rp.type) continue;
-            const curRole = rp.members.filter(m => roleOf(m) === roleOf(c)).length;
-            if (curRole >= (roleOf(c) === "서포터" ? maxSup : maxDlr)) continue;
-            if (rp.members.some(m => groupOf(m) === groupOf(c))) continue;
-
-            if (rp.type === 8) {
-              if (subFits(rp.g1, c) && (!subFits(rp.g2, c) || rp.g1.length <= rp.g2.length)) rp.g1.push(c);
-              else if (subFits(rp.g2, c)) rp.g2.push(c);
-              else continue;
-              rp.members = [...rp.g1, ...rp.g2];
-            } else {
-              rp.members = [...rp.members, c];
-            }
-            const key = c.charName + c.owner;
-            if (!charCategoryTracker[key]) charCategoryTracker[key] = new Set();
-            charCategoryTracker[key].add(raid.category);
-            placed = true;
-            break;
-          }
-          if (!placed) still.push(c);
-        }
-        leftovers = still;
-      }
 
       if (leftovers.length > 0) {
         leftovers.forEach(m => {

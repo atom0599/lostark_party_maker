@@ -73,6 +73,8 @@ export default function Home() {
 
   const [selectedCharForConfig, setSelectedCharForConfig] = useState(null);
   const [isTableView, setIsTableView] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [swapTarget, setSwapTarget] = useState(null);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
@@ -93,6 +95,27 @@ export default function Home() {
     setPartyResult(newResult);
     localStorage.setItem("loa_members", JSON.stringify(newMembers));
     localStorage.setItem("loa_party_result", JSON.stringify(newResult));
+  };
+
+  // 부계정으로 연결된 원정대는 같은 사람으로 취급 -> 최상위(본계정) 소유자명을 반환
+  const rootOwner = (owner) => {
+    let cur = owner;
+    const seen = new Set([owner]);
+    while (true) {
+      const m = memberList.find(x => x.owner === cur);
+      const main = m && m.mainAccount;
+      if (!main || main === cur || seen.has(main)) return cur;
+      seen.add(main);
+      cur = main;
+    }
+  };
+
+  // 원정대(부계정)의 본계정 지정 / 해제
+  const handleSetMainAccount = (ownerName, mainOwnerName) => {
+    const updated = memberList.map(m =>
+      m.owner === ownerName ? { ...m, mainAccount: mainOwnerName || null } : m
+    );
+    saveToLocalStorage(updated, partyResult);
   };
 
   const handleSearchCharacter = async (e) => {
@@ -224,6 +247,7 @@ export default function Home() {
   };
 
   const handleToggleCharRaid = (ownerName, charName, raidId) => {
+    const targetRaid = RAID_LIST.find(r => r.id === raidId);
     const updatedMembers = memberList.map(m => {
       if (m.owner === ownerName) {
         return {
@@ -231,9 +255,16 @@ export default function Home() {
           characters: m.characters.map(c => {
             if (c.charName === charName) {
               const currentAllowed = c.allowedRaids || RAID_LIST.filter(r => c.level >= r.minLevel).map(r => r.id);
-              const newAllowed = currentAllowed.includes(raidId)
-                ? currentAllowed.filter(id => id !== raidId)
-                : [...currentAllowed, raidId];
+              let newAllowed;
+              if (currentAllowed.includes(raidId)) {
+                newAllowed = currentAllowed.filter(id => id !== raidId);
+              } else {
+                newAllowed = currentAllowed.filter(id => {
+                  const existingRaid = RAID_LIST.find(r => r.id === id);
+                  return existingRaid && existingRaid.category !== targetRaid.category;
+                });
+                newAllowed.push(raidId);
+              }
               return { ...c, allowedRaids: newAllowed };
             }
             return c;
@@ -316,6 +347,97 @@ export default function Home() {
     alert("✅ 해당 파티 인원의 클리어 처리가 완료되었습니다.\n다시 [자동 파티 짜기]를 누르면 매칭에서 제외됩니다.");
   };
 
+  // 수동 편집: 선택한 캐릭터를 다른 캐릭터와 교체하거나 빈 자리로 이동
+  const applyEdit = (from, to) => {
+    const next = partyResult.map(p => ({
+      ...p,
+      members: [...(p.members || [])],
+      g1: [...(p.g1 || [])],
+      g2: [...(p.g2 || [])],
+    }));
+
+    const fromParty = next.find(p => p.id === from.partyId);
+    const toParty = next.find(p => p.id === to.partyId);
+    if (!fromParty || !toParty) return;
+
+    // 같은 사람(부계정 포함)이 한 파티에 중복 편성되는지 확인
+    if (fromParty.id !== toParty.id && toParty.type !== "single") {
+      const movingRoot = rootOwner(from.owner);
+      const clash = (toParty.members || []).some(m =>
+        !(to.member && m.owner === to.member.owner && m.charName === to.member.charName) &&
+        rootOwner(m.owner) === movingRoot
+      );
+      if (clash && !window.confirm("같은 사람(부계정 포함)의 캐릭터가 이미 이 파티에 있습니다. 그래도 진행할까요?")) return;
+    }
+
+    const pull = (party, group, owner, charName) => {
+      const arr = party[group];
+      const i = arr.findIndex(m => m.owner === owner && m.charName === charName);
+      if (i === -1) return null;
+      const [c] = arr.splice(i, 1);
+      if (group !== "members") {
+        const mi = party.members.findIndex(m => m.owner === owner && m.charName === charName);
+        if (mi !== -1) party.members.splice(mi, 1);
+      }
+      return c;
+    };
+
+    const push = (party, group, c) => {
+      party[group].push(c);
+      if (group !== "members" && !party.members.some(m => m.owner === c.owner && m.charName === c.charName)) {
+        party.members.push(c);
+      }
+    };
+
+    const moving = pull(fromParty, from.group, from.owner, from.charName);
+    if (!moving) return;
+
+    if (to.member) {
+      // 두 캐릭터 자리 교체
+      const target = pull(toParty, to.group, to.member.owner, to.member.charName);
+      if (!target) {
+        push(fromParty, from.group, moving);
+        return;
+      }
+      push(toParty, to.group, moving);
+      push(fromParty, from.group, target);
+    } else {
+      // 빈 자리로 이동 (정원 초과 방지)
+      const cap = toParty.type === 8 || toParty.type === 4 ? 4 : Infinity;
+      if (toParty[to.group].length >= cap) {
+        push(fromParty, from.group, moving);
+        return;
+      }
+      push(toParty, to.group, moving);
+    }
+
+    next.forEach(p => {
+      if (p.type === 8) p.members = [...p.g1, ...p.g2];
+    });
+
+    // 인원이 0명이 된 싱글/미편성 파티는 정리
+    const cleaned = next.filter(p => !(p.type === "single" && p.members.length === 0));
+
+    saveToLocalStorage(memberList, cleaned);
+  };
+
+  const handleSlotClick = (partyId, group, member) => {
+    if (!isEditMode) return;
+
+    if (!swapTarget) {
+      if (member) setSwapTarget({ partyId, group, owner: member.owner, charName: member.charName });
+      return;
+    }
+
+    // 선택한 카드를 다시 누르면 선택 해제
+    if (member && swapTarget.partyId === partyId && swapTarget.owner === member.owner && swapTarget.charName === member.charName) {
+      setSwapTarget(null);
+      return;
+    }
+
+    applyEdit(swapTarget, { partyId, group, member });
+    setSwapTarget(null);
+  };
   const generateParties = () => {
     if (memberList.length === 0) return alert("공대원 원정대를 먼저 등록해주세요!");
 
@@ -326,7 +448,7 @@ export default function Home() {
     memberList.forEach(m => {
       m.characters.forEach(c => {
         if (!c.isExcluded) {
-          allChars.push({ ...c, owner: m.owner });
+          allChars.push({ ...c, owner: m.owner, ownerGroup: rootOwner(m.owner) });
           const key = c.charName + m.owner;
           if (!charCategoryTracker[key]) {
             charCategoryTracker[key] = new Set();
@@ -381,7 +503,7 @@ export default function Home() {
         for (const sup of [...supports]) {
           const eligible = tempParties.filter(p => {
             const currentSup = p.members.filter(x => x.role === "서포터").length;
-            return currentSup < p.targetSup && !p.owners.has(sup.owner) && !p.classes.has(sup.className);
+            return currentSup < p.targetSup && !p.owners.has(sup.ownerGroup) && !p.classes.has(sup.className);
           });
 
           if (eligible.length > 0) {
@@ -394,7 +516,7 @@ export default function Home() {
             
             const p = eligible[0];
             p.members.push(sup);
-            p.owners.add(sup.owner);
+            p.owners.add(sup.ownerGroup);
             p.classes.add(sup.className);
             supports = supports.filter(s => s !== sup);
             placedAny = true;
@@ -404,7 +526,7 @@ export default function Home() {
         for (const dlr of [...dealers]) {
           const eligible = tempParties.filter(p => {
             const currentDlr = p.members.filter(x => x.role === "딜러").length;
-            return currentDlr < p.targetDlr && !p.owners.has(dlr.owner) && !p.classes.has(dlr.className);
+            return currentDlr < p.targetDlr && !p.owners.has(dlr.ownerGroup) && !p.classes.has(dlr.className);
           });
 
           if (eligible.length > 0) {
@@ -417,7 +539,7 @@ export default function Home() {
             
             const p = eligible[0];
             p.members.push(dlr);
-            p.owners.add(dlr.owner);
+            p.owners.add(dlr.ownerGroup);
             p.classes.add(dlr.className);
             dealers = dealers.filter(d => d !== dlr);
             placedAny = true;
@@ -610,21 +732,30 @@ export default function Home() {
     );
   };
 
-  const renderMemberCard = (member, isSingle) => {
+  const renderMemberCard = (member, isSingle, slot) => {
     const isTargetOwner = viewMode === "owner" && filterTarget && member.owner === filterTarget;
     const isHybrid = ["바드", "홀리나이트", "도화가", "발키리"].includes(member.className);
+    const editable = isEditMode && !!slot;
+    const isSelected = editable && swapTarget && swapTarget.partyId === slot.partyId
+      && swapTarget.owner === member.owner && swapTarget.charName === member.charName;
 
     return (
-      <div className={`p-3 rounded-xl border text-xs flex flex-col justify-between h-32 relative overflow-hidden transition-all ${
-        isTargetOwner 
-          ? (isDarkMode ? 'bg-yellow-950/60 border-yellow-500 shadow-lg shadow-yellow-500/25 ring-2 ring-yellow-500' : 'bg-yellow-50 border-yellow-400 shadow-md ring-2 ring-yellow-400') 
-          : viewMode === "owner" 
-            ? (isDarkMode ? 'bg-gray-950/50 border-gray-900 opacity-40' : 'bg-gray-100 border-gray-200 opacity-40') 
-            : isSingle 
-              ? (isDarkMode ? 'bg-indigo-950/50 border-indigo-900/40' : 'bg-indigo-50 border-indigo-200') 
+      <div
+        onClick={editable ? () => handleSlotClick(slot.partyId, slot.group, member) : undefined}
+        className={`p-3 rounded-xl border text-xs flex flex-col justify-between h-32 relative overflow-hidden transition-all ${
+        editable ? 'cursor-pointer' : ''
+      } ${
+        isSelected
+          ? 'border-blue-500 ring-2 ring-blue-500 shadow-lg shadow-blue-500/30'
+          : isTargetOwner
+          ? (isDarkMode ? 'bg-yellow-950/60 border-yellow-500 shadow-lg shadow-yellow-500/25 ring-2 ring-yellow-500' : 'bg-yellow-50 border-yellow-400 shadow-md ring-2 ring-yellow-400')
+          : viewMode === "owner"
+            ? (isDarkMode ? 'bg-gray-950/50 border-gray-900 opacity-40' : 'bg-gray-100 border-gray-200 opacity-40')
+            : isSingle
+              ? (isDarkMode ? 'bg-indigo-950/50 border-indigo-900/40' : 'bg-indigo-50 border-indigo-200')
               : (isDarkMode ? 'bg-gray-900/80 border-gray-800' : 'bg-white border-gray-200 shadow-sm')
-      }`}>
-        
+      } ${editable && !isSelected ? (isDarkMode ? 'hover:ring-2 hover:ring-blue-500/50' : 'hover:ring-2 hover:ring-blue-400/60') : ''}`}>
+
         {member.characterImage && (
           <div className="absolute inset-0 overflow-hidden pointer-events-none flex items-center justify-end">
             <img 
@@ -638,9 +769,9 @@ export default function Home() {
 
         <div className="flex justify-between items-start gap-1 z-10">
           {isHybrid ? (
-            <button 
+            <button
               type="button"
-              onClick={() => handleToggleRole(member.owner, member.charName)}
+              onClick={(e) => { e.stopPropagation(); handleToggleRole(member.owner, member.charName); }}
               className={`relative inline-flex h-5 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                 member.role === '서포터' ? 'bg-green-600' : 'bg-blue-600'
               }`}
@@ -682,6 +813,22 @@ export default function Home() {
             CP {member.combatPower.toLocaleString()}
           </span>
         </div>
+      </div>
+    );
+  };
+
+  const renderEmptySlot = (slot) => {
+    const active = isEditMode && !!swapTarget;
+    return (
+      <div
+        onClick={active ? () => handleSlotClick(slot.partyId, slot.group, null) : undefined}
+        className={`p-3 rounded-xl border border-dashed flex justify-center items-center text-xs h-32 transition-all ${
+          active
+            ? `cursor-pointer border-blue-500 font-semibold ${isDarkMode ? 'bg-blue-950/30 text-blue-300 hover:bg-blue-900/40' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`
+            : (isDarkMode ? 'bg-gray-950/30 border-gray-800 text-gray-600' : 'bg-gray-100/50 border-gray-200 text-gray-400')
+        }`}
+      >
+        {active ? '⬇️ 여기로 이동' : '- 빈 자리 -'}
       </div>
     );
   };
@@ -768,6 +915,21 @@ export default function Home() {
               </button>
               <span className={`text-xs font-semibold ${isTableView ? (isDarkMode ? 'text-indigo-400' : 'text-indigo-600') : 'text-gray-400'}`}>표 요약</span>
             </div>
+
+            {/* 수동 편집 토글 */}
+            <button 
+              onClick={() => {
+                setIsEditMode(!isEditMode);
+                setSwapTarget(null);
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition-all border text-sm ${
+                isEditMode 
+                  ? 'bg-blue-600 text-white border-blue-500 shadow-md' 
+                  : (isDarkMode ? 'bg-gray-900 text-gray-400 border-gray-800' : 'bg-white text-gray-600 border-gray-300 shadow-sm hover:bg-gray-50')
+              }`}
+            >
+              ✏️ {isEditMode ? '수동 편집 종료' : '파티 수동 편집'}
+            </button>
 
             <button onClick={generateParties} className="bg-yellow-500 hover:bg-yellow-400 text-gray-950 font-bold px-6 py-2.5 rounded-lg shadow-lg transition-all">
               ⚡ 최적 파티 자동 조합
@@ -862,8 +1024,11 @@ export default function Home() {
                 <div key={idx} className={`${isDarkMode ? 'bg-gray-950/80 border-gray-800/80' : 'bg-gray-50 border-gray-200 shadow-sm'} p-4 rounded-xl border space-y-3 min-w-[340px] max-w-[340px] flex-shrink-0 transition-colors`}>
                   <div className={`flex justify-between items-center border-b ${isDarkMode ? 'border-gray-900' : 'border-gray-200'} pb-2.5`}>
                     <div className={`font-bold ${isDarkMode ? 'text-yellow-400' : 'text-yellow-600'} text-sm flex items-center gap-1.5`}>
-                      <span className="w-2 h-2 rounded-full bg-yellow-400"></span>
+                      <span className={`w-2 h-2 rounded-full ${m.mainAccount ? 'bg-purple-400' : 'bg-yellow-400'}`}></span>
                       {m.owner} 원정대
+                      {m.mainAccount && (
+                        <span className={`font-normal text-[10px] px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-purple-950/60 text-purple-300' : 'bg-purple-100 text-purple-700'}`}>🔗 {m.mainAccount} 부계정</span>
+                      )}
                     </div>
                     <div className="flex gap-1.5">
                       <button 
@@ -882,7 +1047,24 @@ export default function Home() {
                       </button>
                     </div>
                   </div>
-                  
+
+                  {memberList.length > 1 && (
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[11px] flex-shrink-0 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>🔗 부계정 연결</span>
+                      <select
+                        value={m.mainAccount || ""}
+                        onChange={(e) => handleSetMainAccount(m.owner, e.target.value)}
+                        title="이 원정대를 다른 원정대의 부계정으로 지정하면, 자동 조합 시 같은 레이드 파티에 함께 편성되지 않습니다."
+                        className={`flex-1 min-w-0 border rounded-lg px-2 py-1 text-[11px] focus:outline-none ${isDarkMode ? 'bg-gray-900 border-gray-800 text-gray-200' : 'bg-white border-gray-300 text-gray-700'}`}
+                      >
+                        <option value="">없음 (본계정)</option>
+                        {memberList.filter(o => o.owner !== m.owner).map((o, i) => (
+                          <option key={i} value={o.owner}>{o.owner} 의 부계정</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   <div className="text-xs space-y-2 max-h-56 overflow-y-auto pr-1">
                     {m.characters.map((c, cIdx) => (
                       <div key={cIdx}>
@@ -1025,6 +1207,23 @@ export default function Home() {
               )}
             </div>
           </div>
+
+          {isEditMode && (
+            <div className={`border rounded-xl px-4 py-3 text-xs flex flex-wrap items-center gap-2 ${isDarkMode ? 'bg-blue-950/40 border-blue-900 text-blue-200' : 'bg-blue-50 border-blue-300 text-blue-800'}`}>
+              <span className="font-bold">✏️ 수동 편집 모드</span>
+              {isTableView ? (
+                <span>표 요약에서는 편집할 수 없습니다. 상단 스위치를 <b>카드 보기</b>로 전환하세요.</span>
+              ) : (
+                <span>
+                  캐릭터를 클릭해 선택한 뒤, 교체할 <b>다른 캐릭터</b>나 <b>빈 자리</b>를 클릭하세요.
+                  {swapTarget && <span className="ml-1 font-semibold">· 선택됨: {swapTarget.charName}</span>}
+                </span>
+              )}
+              {swapTarget && (
+                <button onClick={() => setSwapTarget(null)} className="ml-auto underline font-semibold">선택 해제</button>
+              )}
+            </div>
+          )}
 
           {isTableView ? (
             <div className={`${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-300 shadow-md'} border rounded-2xl p-6 overflow-x-auto transition-colors`}>
@@ -1184,18 +1383,18 @@ export default function Home() {
                             <div className="space-y-1">
                               <div className={`text-xs font-bold ${isDarkMode ? 'text-yellow-500' : 'text-yellow-600'} ml-1`}>▪️ 1파티 <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} font-normal`}>(서포터 1 / 딜러 3)</span></div>
                               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
-                                {(party.g1 || []).map((m, idx) => <div key={`g1-${idx}`}>{renderMemberCard(m, false)}</div>)}
+                                {(party.g1 || []).map((m, idx) => <div key={`g1-${idx}`}>{renderMemberCard(m, false, { partyId: party.id, group: 'g1' })}</div>)}
                                 {Array.from({ length: Math.max(0, 4 - (party.g1 || []).length) }).map((_, eIdx) => (
-                                  <div key={`empty1-${eIdx}`} className={`${isDarkMode ? 'bg-gray-950/30 border-gray-800 text-gray-600' : 'bg-gray-100/50 border-gray-200 text-gray-400'} p-3 rounded-xl border border-dashed flex justify-center items-center text-xs h-32`}> - 빈 자리 - </div>
+                                  <div key={`empty1-${eIdx}`}>{renderEmptySlot({ partyId: party.id, group: 'g1' })}</div>
                                 ))}
                               </div>
                             </div>
                             <div className="space-y-1">
                               <div className={`text-xs font-bold ${isDarkMode ? 'text-yellow-500' : 'text-yellow-600'} ml-1`}>▪️ 2파티 <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} font-normal`}>(서포터 1 / 딜러 3)</span></div>
                               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
-                                {(party.g2 || []).map((m, idx) => <div key={`g2-${idx}`}>{renderMemberCard(m, false)}</div>)}
+                                {(party.g2 || []).map((m, idx) => <div key={`g2-${idx}`}>{renderMemberCard(m, false, { partyId: party.id, group: 'g2' })}</div>)}
                                 {Array.from({ length: Math.max(0, 4 - (party.g2 || []).length) }).map((_, eIdx) => (
-                                  <div key={`empty2-${eIdx}`} className={`${isDarkMode ? 'bg-gray-950/30 border-gray-800 text-gray-600' : 'bg-gray-100/50 border-gray-200 text-gray-400'} p-3 rounded-xl border border-dashed flex justify-center items-center text-xs h-32`}> - 빈 자리 - </div>
+                                  <div key={`empty2-${eIdx}`}>{renderEmptySlot({ partyId: party.id, group: 'g2' })}</div>
                                 ))}
                               </div>
                             </div>
@@ -1203,10 +1402,10 @@ export default function Home() {
                         ) : (
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
                             {(party.members || []).map((member, mIdx) => (
-                              <div key={mIdx}>{renderMemberCard(member, isSingle)}</div>
+                              <div key={mIdx}>{renderMemberCard(member, isSingle, { partyId: party.id, group: 'members' })}</div>
                             ))}
                             {!isSingle && Array.from({ length: party.type - (party.members || []).length }).map((_, eIdx) => (
-                              <div key={`empty-${eIdx}`} className={`${isDarkMode ? 'bg-gray-950/30 border-gray-800 text-gray-600' : 'bg-gray-100/50 border-gray-200 text-gray-400'} p-3 rounded-xl border border-dashed flex justify-center items-center text-xs h-32`}>- 빈 자리 -</div>
+                              <div key={`empty-${eIdx}`}>{renderEmptySlot({ partyId: party.id, group: 'members' })}</div>
                             ))}
                           </div>
                         )}

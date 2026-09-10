@@ -316,35 +316,13 @@ export default function Home() {
     return { g1, g2, members: [...g1, ...g2] };
   };
 
+  // 클리어 표시 토글: 매칭에서 빼지 않고, 완료된 파티를 시각적으로 비활성화 표시만 함
   const handlePartyClear = (party) => {
-    if (party.type === "single") {
-      alert("미편성된 캐릭터들은 개별적으로 클리어 체크를 진행해주세요.");
-      return;
-    }
-    
-    if (!window.confirm(`[${party.raidName}]에 포함된 모든 캐릭터를 '클리어(제외)' 처리하시겠습니까?`)) return;
-    
-    const raidIdToClear = party.originalRaidId;
-    
-    const newMemberList = memberList.map(m => {
-      let isModified = false;
-      const newChars = m.characters.map(c => {
-        const isMemberInParty = (party.members || []).some(pm => pm.charName === c.charName && pm.owner === m.ownerName);
-        if (isMemberInParty) {
-          isModified = true;
-          const currentAllowed = c.allowedRaids || RAID_LIST.filter(r => c.level >= r.minLevel).map(r => r.id);
-          const newAllowed = currentAllowed.filter(id => id !== raidIdToClear);
-          return { ...c, allowedRaids: newAllowed };
-        }
-        return c;
-      });
-      return isModified ? { ...m, characters: newChars } : m;
-    });
-    
-    setMemberList(newMemberList);
-    saveToLocalStorage(newMemberList, partyResult);
-    
-    alert("✅ 해당 파티 인원의 클리어 처리가 완료되었습니다.\n다시 [자동 파티 짜기]를 누르면 매칭에서 제외됩니다.");
+    if (party.type === "single") return;
+    const newResult = partyResult.map(p =>
+      p.id === party.id ? { ...p, cleared: !p.cleared } : p
+    );
+    saveToLocalStorage(memberList, newResult);
   };
 
   // 수동 편집: 선택한 캐릭터를 다른 캐릭터와 교체하거나 빈 자리로 이동
@@ -590,10 +568,55 @@ export default function Home() {
       const assignedCharKeys = new Set();
       assignedParties.forEach(p => p.forEach(m => assignedCharKeys.add(m.charName + m.owner)));
 
-      const trueLeftovers = [...eligibleSupports, ...eligibleDealers].filter(c => !assignedCharKeys.has(c.charName + c.owner));
+      let leftovers = [...eligibleSupports, ...eligibleDealers].filter(c => !assignedCharKeys.has(c.charName + c.owner));
 
-      if (trueLeftovers.length > 0) {
-        trueLeftovers.forEach(m => {
+      // 빈자리 채우기: 같은 직업 제한은 무시하고, 정원/역할/원정대(부계정) 조건만 지켜
+      // 이미 만들어진 파티의 빈 자리에 미편성 캐릭터를 채워 넣는다. (빈자리 있는데 미편성되는 문제 방지)
+      if (leftovers.length > 0) {
+        const maxSup = raid.type === 8 ? 2 : 1;
+        const maxDlr = raid.type === 8 ? 6 : 3;
+        const groupOf = (m) => m.ownerGroup || rootOwner(m.owner);
+        const roleOf = (m) => (m.role === "서포터" ? "서포터" : "딜러");
+        const subFits = (g, c) => {
+          const s = g.filter(m => roleOf(m) === "서포터").length;
+          const d = g.length - s;
+          return g.length < 4 && (roleOf(c) === "서포터" ? s < 1 : d < 3);
+        };
+
+        const still = [];
+        for (const c of leftovers) {
+          let placed = false;
+          const candidates = raidParties
+            .filter(rp => rp.type !== "single")
+            .sort((a, b) => (b.members || []).length - (a.members || []).length);
+
+          for (const rp of candidates) {
+            if ((rp.members || []).length >= rp.type) continue;
+            const curRole = rp.members.filter(m => roleOf(m) === roleOf(c)).length;
+            if (curRole >= (roleOf(c) === "서포터" ? maxSup : maxDlr)) continue;
+            if (rp.members.some(m => groupOf(m) === groupOf(c))) continue;
+
+            if (rp.type === 8) {
+              if (subFits(rp.g1, c) && (!subFits(rp.g2, c) || rp.g1.length <= rp.g2.length)) rp.g1.push(c);
+              else if (subFits(rp.g2, c)) rp.g2.push(c);
+              else continue;
+              rp.members = [...rp.g1, ...rp.g2];
+            } else {
+              rp.members = [...rp.members, c];
+            }
+            const key = c.charName + c.owner;
+            if (!charCategoryTracker[key]) charCategoryTracker[key] = new Set();
+            charCategoryTracker[key].add(raid.category);
+            placed = true;
+            break;
+          }
+          if (!placed) still.push(c);
+        }
+        leftovers = still;
+      }
+
+      if (leftovers.length > 0) {
+        leftovers.forEach(m => {
           const key = m.charName + m.owner;
           if (!charCategoryTracker[key]) charCategoryTracker[key] = new Set();
           charCategoryTracker[key].add(raid.category);
@@ -606,7 +629,7 @@ export default function Home() {
           category: raid.category,
           type: "single",
           minLevel: raid.minLevel,
-          members: trueLeftovers,
+          members: leftovers,
           g1: [],
           g2: []
         });
@@ -1245,13 +1268,13 @@ export default function Home() {
                     const avgCP = (party.members && party.members.length > 0) ? Math.floor(totalCP / party.members.length) : 0;
 
                     return (
-                      <tr key={party.id} className={`${isDarkMode ? 'hover:bg-gray-800/40' : 'hover:bg-gray-50'} transition-all`}>
+                      <tr key={party.id} className={`${isDarkMode ? 'hover:bg-gray-800/40' : 'hover:bg-gray-50'} transition-all ${party.cleared ? 'opacity-45' : ''}`}>
                         <td className={`py-3 px-4 text-center font-bold ${isDarkMode ? 'text-yellow-500' : 'text-yellow-600'}`}>{index + 1}</td>
                         <td className="py-3 px-4 font-bold">
                           {isSingle ? (
                             <span className={isDarkMode ? 'text-indigo-300' : 'text-indigo-700'}>{party.raidName}</span>
                           ) : (
-                            <span className={isDarkMode ? 'text-yellow-300' : 'text-yellow-700'}>{party.raidName}</span>
+                            <span className={`${party.cleared ? 'line-through ' : ''}${isDarkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>{party.raidName}</span>
                           )}
                         </td>
                         <td className={`py-3 px-4 ${isDarkMode ? 'text-gray-200' : 'text-gray-800'} font-medium`}>
@@ -1306,10 +1329,14 @@ export default function Home() {
                           {!isSingle && (
                             <button
                               onClick={() => handlePartyClear(party)}
-                              className={`text-[10px] px-2 py-1 rounded-lg border font-bold transition-all shadow-sm whitespace-nowrap ${isDarkMode ? 'bg-green-900/60 border-green-800 text-green-400 hover:bg-green-800' : 'bg-green-100 border-green-300 text-green-700 hover:bg-green-200'}`}
-                              title="이 파티 전원 클리어 처리"
+                              className={`text-[10px] px-2 py-1 rounded-lg border font-bold transition-all shadow-sm whitespace-nowrap ${
+                                party.cleared
+                                  ? (isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700' : 'bg-gray-200 border-gray-300 text-gray-600 hover:bg-gray-300')
+                                  : (isDarkMode ? 'bg-green-900/60 border-green-800 text-green-400 hover:bg-green-800' : 'bg-green-100 border-green-300 text-green-700 hover:bg-green-200')
+                              }`}
+                              title="클리어 표시 토글 (매칭에는 영향 없음)"
                             >
-                              ✅ 클리어
+                              {party.cleared ? '↩ 취소' : '✅ 클리어'}
                             </button>
                           )}
                         </td>
@@ -1333,7 +1360,7 @@ export default function Home() {
                   const bgImage = getRaidIllustration(party.originalRaidId);
 
                   return (
-                    <div key={party.id} className={`${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-300 shadow-md'} border rounded-xl overflow-hidden space-y-2 relative transition-colors ${isSingle ? (isDarkMode ? 'border-indigo-900/50 bg-indigo-950/20' : 'border-indigo-200 bg-indigo-50/50') : ''}`}>
+                    <div key={party.id} className={`${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-300 shadow-md'} border rounded-xl overflow-hidden space-y-2 relative transition-all ${isSingle ? (isDarkMode ? 'border-indigo-900/50 bg-indigo-950/20' : 'border-indigo-200 bg-indigo-50/50') : ''} ${party.cleared ? 'opacity-50 grayscale' : ''}`}>
                       
                       <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
                         <img 
@@ -1352,7 +1379,10 @@ export default function Home() {
                             ) : (
                               <span className="text-xs font-bold bg-yellow-500 text-gray-950 px-2.5 py-1 rounded shadow">파티 {party.partyNum}</span>
                             )}
-                            <span className={`font-extrabold text-xl drop-shadow-md truncate ${isSingle ? (isDarkMode ? 'text-indigo-300' : 'text-indigo-700') : (isDarkMode ? 'text-yellow-300' : 'text-yellow-700')}`}>
+                            {party.cleared && (
+                              <span className="text-xs font-bold bg-gray-500 text-white px-2.5 py-1 rounded shadow">✅ 클리어 완료</span>
+                            )}
+                            <span className={`font-extrabold text-xl drop-shadow-md truncate ${party.cleared ? 'line-through ' : ''}${isSingle ? (isDarkMode ? 'text-indigo-300' : 'text-indigo-700') : (isDarkMode ? 'text-yellow-300' : 'text-yellow-700')}`}>
                               {party.raidName}
                             </span>
                           </div>
@@ -1363,10 +1393,14 @@ export default function Home() {
                           <div className="flex items-center gap-2 flex-wrap justify-end">
                             <button
                               onClick={() => handlePartyClear(party)}
-                              className={`text-xs px-3 py-2 rounded-xl border font-bold transition-all shadow flex items-center gap-1 ${isDarkMode ? 'bg-green-900/60 border-green-800 text-green-400 hover:bg-green-800' : 'bg-green-100 border-green-300 text-green-700 hover:bg-green-200'}`}
-                              title="이 파티 인원 전체의 해당 레이드를 클리어(제외) 처리합니다."
+                              className={`text-xs px-3 py-2 rounded-xl border font-bold transition-all shadow flex items-center gap-1 ${
+                                party.cleared
+                                  ? (isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700' : 'bg-gray-200 border-gray-300 text-gray-600 hover:bg-gray-300')
+                                  : (isDarkMode ? 'bg-green-900/60 border-green-800 text-green-400 hover:bg-green-800' : 'bg-green-100 border-green-300 text-green-700 hover:bg-green-200')
+                              }`}
+                              title="클리어 표시만 토글합니다. 파티 편성/매칭에는 영향을 주지 않습니다."
                             >
-                              ✅ 전원 클리어
+                              {party.cleared ? '↩ 클리어 취소' : '✅ 클리어 표시'}
                             </button>
                             <div className={`${isDarkMode ? 'bg-blue-950/80 border-blue-900/50 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700'} border px-3.5 py-2 rounded-xl font-semibold shadow text-xs flex items-center gap-3`}>
                               <span>총 전투력 {totalCP.toLocaleString()}</span>

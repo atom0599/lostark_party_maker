@@ -70,6 +70,7 @@ export default function Home() {
 
   const [viewMode, setViewMode] = useState("all");
   const [filterTarget, setFilterTarget] = useState("");
+  const [sortMode, setSortMode] = useState("default");
 
   const [selectedCharForConfig, setSelectedCharForConfig] = useState(null);
   const [isTableView, setIsTableView] = useState(false);
@@ -815,6 +816,9 @@ export default function Home() {
     );
   };
 
+  const isSingleParty = (party) => party.raidName.includes("싱글 / 미편성") || party.type === "single";
+  const partyCP = (party) => (party.members || []).reduce((sum, m) => sum + (m.combatPower || 0), 0);
+
   const displayedParties = partyResult.filter(party => {
     if (viewMode === "all") return true;
     if (viewMode === "raid") {
@@ -827,11 +831,42 @@ export default function Home() {
       return allPartyMembers.some(m => m.owner === filterTarget);
     }
     if (viewMode === "single") {
-      return party.raidName.includes("싱글 / 미편성") || party.type === "single";
+      return isSingleParty(party);
     }
     return true;
   }).map((party, i) => ({ party, i }))
-    .sort((a, b) => (a.party.cleared === b.party.cleared) ? a.i - b.i : (a.party.cleared ? 1 : -1))
+    .sort((a, b) => {
+      // 싱글/미편성은 항상 정상 편성된 파티보다 아래로
+      const aSingle = isSingleParty(a.party);
+      const bSingle = isSingleParty(b.party);
+      if (aSingle !== bSingle) return aSingle ? 1 : -1;
+
+      // 클리어 완료된 파티는 그 다음으로 아래로
+      const aCleared = !!a.party.cleared;
+      const bCleared = !!b.party.cleared;
+      if (aCleared !== bCleared) return aCleared ? 1 : -1;
+
+      switch (sortMode) {
+        case "members": {
+          const diff = (b.party.members?.length || 0) - (a.party.members?.length || 0);
+          if (diff !== 0) return diff;
+          break;
+        }
+        case "cp": {
+          const diff = partyCP(b.party) - partyCP(a.party);
+          if (diff !== 0) return diff;
+          break;
+        }
+        case "name": {
+          const diff = a.party.raidName.localeCompare(b.party.raidName, "ko");
+          if (diff !== 0) return diff;
+          break;
+        }
+        default:
+          break;
+      }
+      return a.i - b.i;
+    })
     .map(({ party }) => party);
 
   return (
@@ -1179,8 +1214,8 @@ export default function Home() {
               )}
 
               {viewMode === "owner" && (
-                <select 
-                  value={filterTarget} 
+                <select
+                  value={filterTarget}
                   onChange={(e) => setFilterTarget(e.target.value)}
                   className={`${isDarkMode ? 'bg-gray-950 border-gray-800 text-yellow-400' : 'bg-gray-100 border-gray-300 text-yellow-700'} border text-xs px-3 py-2 rounded-lg focus:outline-none flex-1 md:flex-none`}
                 >
@@ -1189,6 +1224,21 @@ export default function Home() {
                   ))}
                 </select>
               )}
+
+              <div className="flex items-center gap-1.5">
+                <span className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>정렬</span>
+                <select
+                  value={sortMode}
+                  onChange={(e) => setSortMode(e.target.value)}
+                  title="싱글/미편성 및 클리어 파티는 항상 하단으로 정렬됩니다"
+                  className={`${isDarkMode ? 'bg-gray-950 border-gray-800 text-gray-200' : 'bg-gray-100 border-gray-300 text-gray-800'} border text-xs px-3 py-2 rounded-lg focus:outline-none flex-1 md:flex-none`}
+                >
+                  <option value="default">기본순서 (레이드순)</option>
+                  <option value="members">인원수 많은순</option>
+                  <option value="cp">전투력 합 높은순</option>
+                  <option value="name">파티명순</option>
+                </select>
+              </div>
             </div>
           </div>
 

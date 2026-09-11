@@ -830,7 +830,9 @@ export default function Home() {
       return party.raidName.includes("싱글 / 미편성") || party.type === "single";
     }
     return true;
-  });
+  }).map((party, i) => ({ party, i }))
+    .sort((a, b) => (a.party.cleared === b.party.cleared) ? a.i - b.i : (a.party.cleared ? 1 : -1))
+    .map(({ party }) => party);
 
   return (
     <main className={`min-h-screen ${isDarkMode ? 'bg-gray-950 text-gray-100' : 'bg-gray-100 text-gray-900'} p-8 font-sans transition-colors duration-200`}>

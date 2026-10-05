@@ -1059,47 +1059,40 @@ export default function Home() {
     </div>
   );
 
+  // 원정대 관리 캐릭터 카드: 세로형 고정 크기 (한 줄에 6개)
+  const CLAMP2 = { display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", wordBreak: "break-all" };
   const renderManageCard = (member, ownerName) => {
     const active = !member.isExcluded;
     return (
-      <div data-row="1" style={{
-        background: active ? "#1B2027" : "#14181D", border: `1px solid ${active ? "#2C333C" : "#1F242B"}`,
-        borderRadius: 14, padding: 12, display: "flex", flexDirection: "column", gap: 10
+      <div data-lift="1" style={{
+        height: 318, background: active ? "#1B2027" : "#14181D", border: `1px solid ${active ? "#2C333C" : "#1F242B"}`,
+        borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column"
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, opacity: active ? 1 : .45 }}>
-          {charThumb(member, 92, 112, 1.45)}
-          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
-            <span style={{ fontSize: 15, fontWeight: 700, wordBreak: "break-all", lineHeight: 1.25, textDecoration: active ? "none" : "line-through" }}>{member.charName}</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
-              {classLine(member, "#A8B0B9", 12)}
-              {roleBadge(member, ownerName, false)}
-            </div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, fontFamily: mono }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: "#C8F24C" }}>Lv.{member.level}</span>
-              <span style={{ fontSize: 11, color: "#8B949E" }}>CP {member.combatPower.toLocaleString()}</span>
-            </div>
-          </div>
+        <div style={{ position: "relative", height: 150, flex: "none", overflow: "hidden", background: "radial-gradient(circle at 50% 35%, #2A323C 0%, #0F1318 75%)", opacity: active ? 1 : .45 }}>
+          {member.characterImage
+            ? <img src={member.characterImage} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 12%", transform: "scale(1.3)", transformOrigin: "50% 10%" }} />
+            : CLASS_ICONS[member.className] && (
+              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <img src={CLASS_ICONS[member.className]} alt="" style={{ width: 64, height: 64, opacity: .6 }} />
+              </div>
+            )}
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(27,32,39,0) 55%,rgba(27,32,39,.95) 100%)" }} />
+          <div style={{ position: "absolute", top: 8, left: 8 }}>{roleBadge(member, ownerName, false)}</div>
+          <div style={{ position: "absolute", left: 10, bottom: 6, fontFamily: mono, fontSize: 15, fontWeight: 700, color: "#C8F24C", textShadow: "0 2px 8px rgba(0,0,0,.8)" }}>Lv.{member.level}</div>
         </div>
-        {active && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-            {RAID_CATEGORIES.map(cat => {
-              const st = raidStatus(ownerName, member, cat);
-              if (st.state === "locked") return null;
-              const c = STATUS_STYLE[st.state];
-              return (
-                <span key={cat} style={{ fontSize: 10, fontWeight: 600, color: c.color, background: c.bg, border: `1px solid ${c.border}`, borderRadius: 999, padding: "3px 8px", whiteSpace: "nowrap" }}>
-                  {st.state === "done" || st.state === "cleared" ? "✓ " : ""}{cat === "지평" ? "지평의 성당" : cat} {st.state === "done" ? "클리어" : raidDiff(st.raid)}
-                </span>
-              );
-            })}
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 4, padding: "8px 10px 0", opacity: active ? 1 : .45 }}>
+          <div style={{ height: 40, display: "flex", alignItems: "center" }}>
+            <span style={{ ...CLAMP2, fontSize: 15, fontWeight: 700, lineHeight: 1.3, textDecoration: active ? "none" : "line-through" }}>{member.charName}</span>
           </div>
-        )}
-        <div style={{ display: "flex", gap: 6 }}>
+          {classLine(member, "#A8B0B9", 12)}
+          <span style={{ fontFamily: mono, fontSize: 11, color: "#8B949E" }}>CP {member.combatPower.toLocaleString()}</span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10 }}>
           <button
             type="button"
             onClick={() => handleToggleExclude(ownerName, member.charName)}
             title="파티 매칭 참여 / 제외 전환"
-            style={{ ...btnSmall, flex: 1, padding: "8px 10px", ...(active
+            style={{ ...btnSmall, padding: "7px 8px", ...(active
               ? { background: "rgba(200,242,76,.12)", color: "#C8F24C", border: "1px solid rgba(200,242,76,.35)" }
               : { background: "rgba(225,66,79,.1)", color: "#E1424F", border: "1px solid rgba(225,66,79,.35)" }) }}
           >
@@ -1108,10 +1101,10 @@ export default function Home() {
           <button
             type="button"
             onClick={() => setSelectedCharForConfig({ owner: ownerName, char: member })}
-            title="이 캐릭터의 레이드 클리어 여부 및 매칭 설정"
-            style={{ ...btnSmall, flex: 1, padding: "8px 10px" }}
+            title="이 캐릭터가 갈 레이드와 클리어한 레이드 확인 / 설정"
+            style={{ ...btnSmall, padding: "7px 8px" }}
           >
-            ⚙ 레이드 / 클리어 설정
+            ⚙ 레이드 설정
           </button>
         </div>
       </div>
@@ -1132,7 +1125,7 @@ export default function Home() {
         data-row={editable ? "1" : undefined}
         onClick={editable ? () => handleSlotClick(slot.partyId, slot.group, member) : undefined}
         style={{
-          position: "relative", overflow: "hidden", background: bg, borderRadius: 12, padding: "10px 12px", minHeight: 104,
+          position: "relative", overflow: "hidden", background: bg, borderRadius: 12, padding: "10px 12px", height: 128, boxSizing: "border-box",
           border: `1px ${isSingle && !isSelected && !isTargetOwner ? "dashed" : "solid"} ${border}`,
           boxShadow: isSelected ? "0 0 0 1px #C8F24C, 0 0 22px rgba(200,242,76,.25)" : isTargetOwner ? "0 0 18px rgba(229,192,76,.18)" : "none",
           display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 6,
@@ -1145,9 +1138,9 @@ export default function Home() {
           {isSelected && <span style={{ fontFamily: mono, fontSize: 10, color: "#C8F24C", letterSpacing: ".08em" }}>SELECTED</span>}
         </div>
         <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, wordBreak: "break-all", lineHeight: 1.25, color: isTargetOwner ? "#F2D98A" : "#E8EAEC" }}>{member.charName}</span>
-          <span style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, minWidth: 0, fontSize: 11, color: isTargetOwner ? "#E5C04C" : "#8B949E" }}>
-            <span style={{ wordBreak: "break-all" }}>{ownerLabel(member.owner)}</span>
+          <span style={{ ...CLAMP2, fontSize: 14, fontWeight: 700, lineHeight: 1.25, color: isTargetOwner ? "#F2D98A" : "#E8EAEC" }}>{member.charName}</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, fontSize: 11, color: isTargetOwner ? "#E5C04C" : "#8B949E" }}>
+            <span title={ownerLabel(member.owner)} style={{ minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ownerLabel(member.owner)}</span>
             <span style={{ color: "#4A525C" }}>·</span>
             {classLine(member, isTargetOwner ? "#E5C04C" : "#8B949E")}
           </span>
@@ -1164,7 +1157,7 @@ export default function Home() {
         data-row={active ? "1" : undefined}
         onClick={active ? () => handleSlotClick(slot.partyId, slot.group, null) : undefined}
         style={{
-          minHeight: 104, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center",
+          height: 128, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center",
           border: `1px dashed ${active ? "rgba(200,242,76,.6)" : "#262C34"}`,
           background: active ? "rgba(200,242,76,.06)" : "rgba(15,19,24,.5)",
           color: active ? "#C8F24C" : "#4A525C", fontFamily: mono, fontSize: 11, letterSpacing: ".08em",
@@ -1319,7 +1312,7 @@ export default function Home() {
               {[
                 ["01", "원정대 등록", <><b>원정대</b> 탭에서 공대원의 대표 캐릭터명(필요하면 실명도)을 입력하고 <b>[원정대 등록]</b>을 누르세요. 1700 이상 캐릭터의 레벨·전투력·초상화를 자동으로 불러옵니다. <b>↻ 갱신</b>으로 최신 정보로 다시 불러올 수 있습니다.</>],
                 ["02", "부계정 연결", <>원정대 이름 옆의 선택창에서 <b>OO 의 부계정</b>을 고르면 본계정과 한 사람으로 묶여 함께 표시되고, 자동 조합 때 같은 파티에 함께 들어가지 않습니다.</>],
-                ["03", "캐릭터 설정", <>캐릭터마다 <b>매칭 참여중 / 제외됨</b>을 눌러 이번 주 파티에서 뺄 수 있고, <b>⚙ 레이드 / 클리어 설정</b>에서 갈 난이도를 고르거나 이미 다녀온 레이드를 체크 해제할 수 있습니다. 바드·홀리나이트·도화가·발키리는 <b>딜러/서포터 배지</b>를 눌러 역할을 바꿀 수 있습니다.</>],
+                ["03", "캐릭터 설정", <>캐릭터마다 <b>매칭 참여중 / 제외됨</b>을 눌러 이번 주 파티에서 뺄 수 있고, <b>⚙ 레이드 설정</b>에서 갈 난이도를 고르거나 이미 다녀온 레이드를 체크 해제할 수 있습니다. 바드·홀리나이트·도화가·발키리는 <b>딜러/서포터 배지</b>를 눌러 역할을 바꿀 수 있습니다.</>],
                 ["04", "최적 파티 자동 조합", <><b>파티 편성</b> 탭의 <b>[최적 파티 자동 조합]</b>을 누르면 레벨 조건, 서포터 수, 직업·원정대(부계정 포함) 중복을 고려해 앞 파티부터 꽉 채워 편성합니다. 자리가 없는 캐릭터는 <b>싱글 / 미편성</b>으로 아래에 모입니다.</>],
                 ["05", "보기 방식과 수동 편집", <><b>카드 보기 / 표 요약</b>을 전환하고, 레이드별·공대원별로 걸러 볼 수 있습니다. <b>파티 수동 편집</b>을 켜면 캐릭터를 눌러 선택한 뒤 다른 캐릭터나 빈 자리를 눌러 바꿀 수 있습니다 (표 요약에서도 가능).</>],
                 ["06", "클리어 체크", <><b>클리어 현황 → 파티별 클리어</b>에서 다녀온 파티를 눌러 클리어로 표시하세요. <b>캐릭터별 현황</b>에서는 캐릭터마다 레이드별로 남음 / 편성 / 클리어 상태를 한눈에 볼 수 있습니다.</>],
@@ -1536,7 +1529,7 @@ export default function Home() {
                 <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
                   <div>
                     <div style={h1}>원정대 관리</div>
-                    <div style={sub}>공대원 대표 캐릭터명을 등록하면 1700 이상 캐릭터의 레벨·전투력을 불러옵니다. 캐릭터마다 매칭 참여/제외를 정하고, ⚙ 레이드 / 클리어 설정으로 갈 레이드와 이미 클리어한 레이드를 체크하세요.</div>
+                    <div style={sub}>공대원 대표 캐릭터명을 등록하면 1700 이상 캐릭터의 레벨·전투력을 불러옵니다. 캐릭터마다 매칭 참여/제외를 정하고, ⚙ 레이드 설정으로 갈 레이드와 이미 클리어한 레이드를 체크하세요.</div>
                   </div>
                   <div style={{ fontFamily: mono, fontSize: 12, color: "#8B949E" }}>
                     원정대 <span style={{ color: "#C8F24C" }}>{memberList.length}</span> · 캐릭터 <span style={{ color: "#E8EAEC" }}>{activeChars}</span>/{totalChars}
@@ -1645,7 +1638,7 @@ export default function Home() {
                                   <button onClick={() => handleRefreshMember(a.owner)} disabled={loading} title="원정대 정보 갱신" style={{ ...btnSmall, opacity: loading ? .6 : 1 }}>↻ 갱신</button>
                                   <button onClick={() => handleRemoveMember(a.owner)} title="원정대 삭제" style={{ ...btnSmall, background: "transparent", color: "#6B737C" }}>삭제 ×</button>
                                 </div>
-                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(270px,1fr))", gap: 10 }}>
+                                <div className="charGrid6">
                                   {a.characters.map((c, cIdx) => (
                                     <div key={cIdx}>{renderManageCard(c, a.owner)}</div>
                                   ))}

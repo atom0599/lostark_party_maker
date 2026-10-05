@@ -430,10 +430,9 @@ export default function Home() {
       for (const c of sortedSups) if (!place(c, true)) rest.push(c);
       for (const c of sortedDlrs) if (!place(c, false)) rest.push(c);
 
-      // 서포터가 없는 파티는 레이드를 갈 수 없으므로 파티로 인정하지 않고 미편성으로 돌린다
       const good = [];
       for (const p of parties) {
-        if (p.members.length >= 2 && p.sup >= 1) good.push(p.members);
+        if (p.members.length >= 2) good.push(p.members);
         else rest.push(...p.members);
       }
       good.sort((a, b) => b.length - a.length); // 가장 꽉 찬 파티가 1번

@@ -3,33 +3,50 @@
 
 import { useState, useEffect, useRef } from "react";
 
-const NAV = [["home", "홈"], ["roster", "원정대"], ["parties", "파티 편성"]];
-const BG_SEQ = ["/raid_5.jpg", "/raid_1.jpg", "/raid_4.jpg", "/raid_2.jpg", "/raid_3.jpg"];
+const NAV = [["home", "홈"], ["roster", "원정대"], ["clear", "클리어 현황"], ["parties", "파티 편성"]];
+// 로스트아크 공식 아트웍 지역 일러스트 (CC BY-NC-SA 4.0, © Smilegate RPG)
+const BG_SEQ = [
+  "/regions/elgacia.jpg", "/regions/aldebaran.jpg", "/regions/kadarum.jpg", "/regions/fleche.jpg",
+  "/regions/punika.jpg", "/regions/voldis.jpg", "/regions/south_vern.jpg",
+];
 const HYBRID_CLASSES = ["바드", "홀리나이트", "도화가", "발키리"];
 const DLR_COLOR = "#FF4B57";
 const SUP_COLOR = "#2FD3B7";
 const SUB_COLOR = "#B478FF";
-const fmtDate = (t) => {
-  const d = new Date(t);
-  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
-};
 
 const RAID_LIST = [
-  { id: 1, category: "벨가르딘", name: "벨가르딘 노말", type: 8, minLevel: 1750, reqSup: 2, reqDlr: 6 },
-  { id: 2, category: "벨가르딘", name: "벨가르딘 하드", type: 8, minLevel: 1770, reqSup: 2, reqDlr: 6 },
-  { id: 3, category: "벨가르딘", name: "벨가르딘 나이트메어", type: 8, minLevel: 1780, reqSup: 2, reqDlr: 6 },
+  { id: 1, category: "벨가르딘", name: "죽음의 계율자, 벨가르딘 노말", type: 8, minLevel: 1750, reqSup: 2, reqDlr: 6 },
+  { id: 2, category: "벨가르딘", name: "죽음의 계율자, 벨가르딘 하드", type: 8, minLevel: 1770, reqSup: 2, reqDlr: 6 },
+  { id: 3, category: "벨가르딘", name: "죽음의 계율자, 벨가르딘 나이트메어", type: 8, minLevel: 1780, reqSup: 2, reqDlr: 6 },
   { id: 4, category: "지평", name: "지평의 성당 1단계", type: 4, minLevel: 1700, reqSup: 1, reqDlr: 3 },
   { id: 5, category: "지평", name: "지평의 성당 2단계", type: 4, minLevel: 1720, reqSup: 1, reqDlr: 3 },
   { id: 6, category: "지평", name: "지평의 성당 3단계", type: 4, minLevel: 1750, reqSup: 1, reqDlr: 3 },
-  { id: 7, category: "세르카", name: "세르카 노말", type: 4, minLevel: 1710, reqSup: 1, reqDlr: 3 },
-  { id: 8, category: "세르카", name: "세르카 하드", type: 4, minLevel: 1730, reqSup: 1, reqDlr: 3 },
-  { id: 9, category: "세르카", name: "세르카 나이트메어", type: 4, minLevel: 1740, reqSup: 1, reqDlr: 3 },
-  { id: 10, category: "4막", name: "4막 노말", type: 8, minLevel: 1700, reqSup: 2, reqDlr: 6 },
-  { id: 11, category: "4막", name: "4막 하드", type: 8, minLevel: 1720, reqSup: 2, reqDlr: 6 },
-  { id: 12, category: "종막", name: "종막 노말", type: 8, minLevel: 1710, reqSup: 2, reqDlr: 6 },
-  { id: 13, category: "종막", name: "종막 하드", type: 8, minLevel: 1730, reqSup: 2, reqDlr: 6 },
+  { id: 7, category: "세르카", name: "고통의 마녀, 세르카 노말", type: 4, minLevel: 1710, reqSup: 1, reqDlr: 3 },
+  { id: 8, category: "세르카", name: "고통의 마녀, 세르카 하드", type: 4, minLevel: 1730, reqSup: 1, reqDlr: 3 },
+  { id: 9, category: "세르카", name: "고통의 마녀, 세르카 나이트메어", type: 4, minLevel: 1740, reqSup: 1, reqDlr: 3 },
+  { id: 10, category: "4막", name: "4막:파멸의 성채 노말", type: 8, minLevel: 1700, reqSup: 2, reqDlr: 6 },
+  { id: 11, category: "4막", name: "4막:파멸의 성채 하드", type: 8, minLevel: 1720, reqSup: 2, reqDlr: 6 },
+  { id: 12, category: "종막", name: "종막:최후의 날 노말", type: 8, minLevel: 1710, reqSup: 2, reqDlr: 6 },
+  { id: 13, category: "종막", name: "종막:최후의 날 하드", type: 8, minLevel: 1730, reqSup: 2, reqDlr: 6 },
 ];
 const RAID_CATEGORIES = [...new Set(RAID_LIST.map(r => r.category))];
+
+// 화면 표시용 레이드 정식 명칭 / 난이도(단계) 라벨
+const CATEGORY_TITLE = {
+  "벨가르딘": "죽음의 계율자, 벨가르딘",
+  "지평": "지평의 성당",
+  "세르카": "고통의 마녀, 세르카",
+  "4막": "4막:파멸의 성채",
+  "종막": "종막:최후의 날",
+};
+const raidDiff = (raid) => raid.name.slice(CATEGORY_TITLE[raid.category].length).trim();
+
+// 예전 이름(예: "벨가르딘 노말")으로 저장된 파티 결과를 현재 정식 명칭으로 변환
+const migratePartyNames = (parties) => parties.map(p => {
+  const raid = RAID_LIST.find(r => r.id === p.originalRaidId);
+  if (!raid || !p.baseRaidName || p.baseRaidName === raid.name) return p;
+  return { ...p, raidName: p.raidName.replace(p.baseRaidName, raid.name), baseRaidName: raid.name };
+});
 
 const CLASS_ICONS = {
   "버서커": "/icons/Berserker.svg",
@@ -98,7 +115,7 @@ export default function Home() {
       try { setMemberList(JSON.parse(savedMembers)); } catch {}
     }
     if (savedResult) {
-      try { setPartyResult(JSON.parse(savedResult)); } catch {}
+      try { setPartyResult(migratePartyNames(JSON.parse(savedResult))); } catch {}
     }
   }, []);
 
@@ -645,11 +662,9 @@ export default function Home() {
   const bgIdx = useRef(0);
   const swapping = useRef(false);
 
-  const [today, setToday] = useState("");
+  const [clearOwner, setClearOwner] = useState("");
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setToday(fmtDate(Date.now()));
     const t = setTimeout(() => setSplash(false), 1500);
     return () => clearTimeout(t);
   }, []);
@@ -737,17 +752,6 @@ export default function Home() {
   const formedParties = partyResult.filter(p => !isSingleParty(p));
   const clearedCount = formedParties.filter(p => p.cleared).length;
   const unassignedCount = partyResult.filter(isSingleParty).reduce((s, p) => s + (p.members || []).length, 0);
-  const clearRate = formedParties.length ? Math.round((clearedCount / formedParties.length) * 100) : 0;
-  const raidProgress = RAID_LIST.map(raid => {
-    const ps = partyResult.filter(p => p.originalRaidId === raid.id);
-    const formed = ps.filter(p => !isSingleParty(p));
-    return {
-      raid,
-      formed: formed.length,
-      cleared: formed.filter(p => p.cleared).length,
-      singles: ps.filter(isSingleParty).reduce((s, p) => s + (p.members || []).length, 0),
-    };
-  }).filter(r => r.formed > 0 || r.singles > 0);
 
   /* ---------- style helpers ---------- */
   const pill = (active, accent = "#FF4B57") => ({
@@ -756,7 +760,6 @@ export default function Home() {
     background: active ? accent : "transparent", color: active ? "#0B0D10" : "#A8B0B9"
   });
   const card = { background: "#14181D", border: "1px solid #262C34", borderRadius: 18, padding: 18 };
-  const glass = { background: "rgba(16,20,25,.72)", backdropFilter: "blur(18px)", WebkitBackdropFilter: "blur(18px)", border: "1px solid rgba(255,255,255,.09)", borderRadius: 22, padding: 18, boxShadow: "0 20px 50px rgba(0,0,0,.4)" };
   const h1 = { fontFamily: "'Archivo'", fontWeight: 800, fontSize: "clamp(26px,5vw,34px)" };
   const sub = { fontSize: 13, color: "#8B949E", marginTop: 4 };
   const input = { background: "#0F1318", border: "1px solid #2C333C", borderRadius: 10, padding: "11px 13px", color: "#E8EAEC", fontSize: 13 };
@@ -811,40 +814,95 @@ export default function Home() {
     </div>
   );
 
+  // 캐릭터가 각 레이드 계열에서 어떤 상태인지 (클리어 현황 탭 / 원정대 카드 공용)
+  const raidStatus = (owner, char, category) => {
+    const inCat = RAID_LIST.filter(r => r.category === category);
+    const eligible = inCat.filter(r => char.level >= r.minLevel);
+    if (eligible.length === 0) return { state: "locked" };
+    const allowed = char.allowedRaids || RAID_LIST.filter(r => char.level >= r.minLevel).map(r => r.id);
+    const sel = inCat.find(r => allowed.includes(r.id));
+    const highest = eligible.reduce((max, r) => r.minLevel > max.minLevel ? r : max, eligible[0]);
+    if (!sel) return { state: "done", highest };
+    const party = partyResult.find(p => p.category === category && !isSingleParty(p)
+      && (p.members || []).some(m => m.owner === owner && m.charName === char.charName));
+    if (party && party.cleared) return { state: "cleared", raid: sel, party, highest };
+    if (party) return { state: "assigned", raid: sel, party, highest };
+    return { state: "pending", raid: sel, highest };
+  };
+
+  const STATUS_STYLE = {
+    locked: { color: "#4A525C", bg: "transparent", border: "#20262E" },
+    done: { color: "#2FD3B7", bg: "rgba(47,211,183,.1)", border: "rgba(47,211,183,.35)" },
+    cleared: { color: "#C8F24C", bg: "rgba(200,242,76,.1)", border: "rgba(200,242,76,.35)" },
+    assigned: { color: "#E8EAEC", bg: "#20262E", border: "#333B45" },
+    pending: { color: "#E5C04C", bg: "rgba(229,192,76,.08)", border: "rgba(229,192,76,.3)" },
+  };
+
+  const charThumb = (member, size = 52) => (
+    <div style={{ width: size, height: size, borderRadius: 12, overflow: "hidden", flex: "none", background: "#0F1318", border: "1px solid #2C333C", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {member.characterImage
+        ? <img src={member.characterImage} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 12%", transform: "scale(1.9)", transformOrigin: "50% 14%" }} />
+        : CLASS_ICONS[member.className] && <img src={CLASS_ICONS[member.className]} alt="" style={{ width: "55%", opacity: .7 }} />}
+    </div>
+  );
+
   const renderManageCard = (member, ownerName) => {
-    const bg = "#1B2027";
+    const active = !member.isExcluded;
     return (
       <div data-row="1" style={{
-        position: "relative", overflow: "hidden", background: bg, border: `1px solid ${member.isExcluded ? "rgba(225,66,79,.25)" : "#262C34"}`,
-        borderRadius: 12, padding: "10px 12px", minHeight: 104, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 6,
-        opacity: member.isExcluded ? .42 : 1
+        background: active ? "#1B2027" : "#14181D", border: `1px solid ${active ? "#2C333C" : "#1F242B"}`,
+        borderRadius: 14, padding: 12, display: "flex", flexDirection: "column", gap: 10
       }}>
-        {charArt(member, bg)}
-        <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            type="checkbox"
-            checked={!member.isExcluded}
-            onChange={() => handleToggleExclude(ownerName, member.charName)}
-            title="체크 해제 시 파티 매칭에서 제외"
-            style={{ width: 15, height: 15, accentColor: "#C8F24C", cursor: "pointer", flex: "none" }}
-          />
+        <div style={{ display: "flex", alignItems: "center", gap: 12, opacity: active ? 1 : .45 }}>
+          {charThumb(member)}
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textDecoration: active ? "none" : "line-through" }}>{member.charName}</span>
+              {roleBadge(member, ownerName, false)}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              {classLine(member, "#A8B0B9")}
+            </div>
+          </div>
+          <div style={{ textAlign: "right", flex: "none" }}>
+            <div style={{ fontFamily: mono, fontSize: 15, fontWeight: 600, color: "#C8F24C" }}>{member.level}</div>
+            <div style={{ fontFamily: mono, fontSize: 11, color: "#8B949E" }}>CP {member.combatPower.toLocaleString()}</div>
+          </div>
+        </div>
+        {active && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {RAID_CATEGORIES.map(cat => {
+              const st = raidStatus(ownerName, member, cat);
+              if (st.state === "locked") return null;
+              const c = STATUS_STYLE[st.state];
+              return (
+                <span key={cat} style={{ fontSize: 10, fontWeight: 600, color: c.color, background: c.bg, border: `1px solid ${c.border}`, borderRadius: 999, padding: "3px 8px", whiteSpace: "nowrap" }}>
+                  {st.state === "done" || st.state === "cleared" ? "✓ " : ""}{cat === "지평" ? "지평의 성당" : cat} {st.state === "done" ? "클리어" : raidDiff(st.raid)}
+                </span>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 6 }}>
+          <button
+            type="button"
+            onClick={() => handleToggleExclude(ownerName, member.charName)}
+            title="파티 매칭 참여 / 제외 전환"
+            style={{ ...btnSmall, flex: 1, padding: "8px 10px", ...(active
+              ? { background: "rgba(200,242,76,.12)", color: "#C8F24C", border: "1px solid rgba(200,242,76,.35)" }
+              : { background: "rgba(225,66,79,.1)", color: "#E1424F", border: "1px solid rgba(225,66,79,.35)" }) }}
+          >
+            {active ? "● 매칭 참여중" : "○ 매칭 제외됨"}
+          </button>
           <button
             type="button"
             onClick={() => setSelectedCharForConfig({ owner: ownerName, char: member })}
             title="이 캐릭터의 레이드 클리어 여부 및 매칭 설정"
-            style={btnSmall}
+            style={{ ...btnSmall, flex: 1, padding: "8px 10px" }}
           >
-            ⚙ 클리어 체크
+            ⚙ 레이드 / 클리어 설정
           </button>
-          {roleBadge(member, ownerName, false)}
         </div>
-        <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textDecoration: member.isExcluded ? "line-through" : "none", color: member.isExcluded ? "#6B737C" : "#E8EAEC" }}>
-            {member.charName}
-          </span>
-          {classLine(member)}
-        </div>
-        <div style={{ position: "relative" }}>{statLine(member)}</div>
       </div>
     );
   };
@@ -1127,13 +1185,13 @@ export default function Home() {
                           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(11,13,16,.25) 0%,rgba(11,13,16,.92) 70%)" }} />
                           <div style={{ position: "relative", height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: 8, padding: 14 }}>
                             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-                              <div style={{ fontFamily: "'Archivo'", fontWeight: 800, fontSize: 20 }}>{cat}</div>
+                              <div style={{ fontFamily: "'Archivo'", fontWeight: 800, fontSize: 18, lineHeight: 1.15 }}>{CATEGORY_TITLE[cat]}</div>
                               <div style={{ fontFamily: mono, fontSize: 10, color: "#C6CDD4" }}>{raids[0].type}인</div>
                             </div>
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                               {raids.map(r => (
                                 <span key={r.id} style={{ fontSize: 10, color: "#C6CDD4", background: "rgba(11,13,16,.6)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 999, padding: "3px 8px", whiteSpace: "nowrap" }}>
-                                  {r.name.replace(cat, "").trim() || r.name} <span style={{ fontFamily: mono, color: "#C8F24C" }}>{r.minLevel}</span>
+                                  {raidDiff(r)} <span style={{ fontFamily: mono, color: "#C8F24C" }}>{r.minLevel}</span>
                                 </span>
                               ))}
                             </div>
@@ -1152,7 +1210,7 @@ export default function Home() {
                 <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
                   <div>
                     <div style={h1}>원정대 관리</div>
-                    <div style={sub}>공대원 대표 캐릭터명을 등록하면 1700 이상 캐릭터의 레벨·전투력을 불러옵니다. 체크를 해제한 캐릭터는 매칭에서 빠지고, ⚙ 클리어 체크로 레이드별 참여 여부를 정할 수 있습니다.</div>
+                    <div style={sub}>공대원 대표 캐릭터명을 등록하면 1700 이상 캐릭터의 레벨·전투력을 불러옵니다. 캐릭터마다 매칭 참여/제외를 정하고, ⚙ 레이드 / 클리어 설정으로 갈 레이드와 이미 클리어한 레이드를 체크하세요.</div>
                   </div>
                   <div style={{ fontFamily: mono, fontSize: 12, color: "#8B949E" }}>
                     원정대 <span style={{ color: "#C8F24C" }}>{memberList.length}</span> · 캐릭터 <span style={{ color: "#E8EAEC" }}>{activeChars}</span>/{totalChars}
@@ -1177,11 +1235,12 @@ export default function Home() {
                     아직 등록된 원정대가 없습니다. 위 입력창에 대표 캐릭터명을 넣어 시작하세요.
                   </div>
                 ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(320px,1fr))", gap: 14 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(360px,1fr))", gap: 14 }}>
                     {memberList.map((m, idx) => {
                       const active = m.characters.filter(c => !c.isExcluded).length;
                       return (
-                        <div key={idx} data-lift="1" style={{ ...card, padding: 14, display: "flex", flexDirection: "column", gap: 12, border: `1px solid ${m.mainAccount ? "rgba(180,120,255,.35)" : "#262C34"}`, animation: fadeUp, animationDelay: `${idx * 50}ms` }}>
+                        <div key={idx} style={{ ...card, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", border: `1px solid ${m.mainAccount ? "rgba(180,120,255,.35)" : "#2C333C"}`, animation: fadeUp, animationDelay: `${idx * 50}ms` }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "14px 14px 12px", background: "linear-gradient(180deg,#1B2027 0%,#14181D 100%)", borderBottom: "1px solid #262C34" }}>
                           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
                             <div style={{ minWidth: 0 }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
@@ -1217,8 +1276,9 @@ export default function Home() {
                               </select>
                             </div>
                           )}
+                          </div>
 
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 460, overflowY: "auto", paddingRight: 2 }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12 }}>
                             {m.characters.map((c, cIdx) => (
                               <div key={cIdx}>{renderManageCard(c, m.owner)}</div>
                             ))}
@@ -1234,6 +1294,135 @@ export default function Home() {
                 )}
               </div>
             )}
+
+            {/* CLEAR STATUS */}
+            {screen === "clear" && (() => {
+              const owners = clearOwner && memberList.some(m => m.owner === clearOwner)
+                ? memberList.filter(m => m.owner === clearOwner) : memberList;
+              const catStats = RAID_CATEGORIES.map(cat => {
+                let left = 0, done = 0;
+                memberList.forEach(m => m.characters.forEach(c => {
+                  if (c.isExcluded) return;
+                  const st = raidStatus(m.owner, c, cat).state;
+                  if (st === "pending" || st === "assigned") left++;
+                  else if (st === "done" || st === "cleared") done++;
+                }));
+                return { cat, left, done };
+              });
+              const clearGrid = `minmax(170px,1.4fr) repeat(${RAID_CATEGORIES.length},minmax(118px,1fr))`;
+              const cellLabel = (st) => {
+                switch (st.state) {
+                  case "locked": return ["—", "레벨 미달"];
+                  case "done": return ["✓ 클리어", "체크 완료"];
+                  case "cleared": return ["✓ 클리어", `${raidDiff(st.raid)} · 파티 클리어`];
+                  case "assigned": return [raidDiff(st.raid), `파티 ${st.party.partyNum} 편성`];
+                  default: return [raidDiff(st.raid), partyResult.length ? "미편성" : "남음"];
+                }
+              };
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14, animation: fadeUp }}>
+                  <div>
+                    <div style={h1}>클리어 현황</div>
+                    <div style={sub}>캐릭터별로 이번 주 각 레이드를 클리어했는지 한눈에 확인합니다. 칸을 누르면 바로 클리어 체크/해제되고, 체크된 레이드는 자동 조합에서 빠집니다.</div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
+                    {catStats.map(({ cat, left, done }, i) => {
+                      const total = left + done;
+                      const pct = total ? Math.round((done / total) * 100) : 0;
+                      return (
+                        <div key={cat} style={{ position: "relative", overflow: "hidden", borderRadius: 16, border: "1px solid #2C333C", background: "#14181D", padding: "14px 16px", animation: fadeUp, animationDelay: `${i * 60}ms` }}>
+                          <img src={getRaidIllustration(RAID_LIST.find(r => r.category === cat).id)} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .18 }} />
+                          <div style={{ position: "relative" }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{CATEGORY_TITLE[cat]}</div>
+                            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 8 }}>
+                              <span style={{ fontFamily: "'Archivo'", fontWeight: 800, fontSize: 28, color: left ? "#E5C04C" : "#C8F24C" }}>{left}</span>
+                              <span style={{ fontSize: 11, color: "#8B949E" }}>캐릭터 남음 · 완료 {done}</span>
+                            </div>
+                            <div style={{ height: 4, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden", marginTop: 10 }}>
+                              <div style={{ height: "100%", width: `${pct}%`, background: "linear-gradient(90deg,#2FD3B7,#C8F24C)", borderRadius: 999, transition: "width .4s ease" }} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "#14181D", border: "1px solid #262C34", borderRadius: 14, padding: "10px 12px" }}>
+                    <div data-scrollx="1" style={{ display: "flex", gap: 6, minWidth: 0 }}>
+                      <button onClick={() => setClearOwner("")} style={pill(!clearOwner || !memberList.some(m => m.owner === clearOwner))}>전체 원정대</button>
+                      {memberList.map(m => (
+                        <button key={m.owner} onClick={() => setClearOwner(m.owner)} style={pill(clearOwner === m.owner)}>{m.owner}</button>
+                      ))}
+                    </div>
+                    <div style={{ flex: 1 }} />
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 11 }}>
+                      {[["pending", "남음"], ["assigned", "파티 편성"], ["cleared", "파티 클리어"], ["done", "클리어 체크"]].map(([k, label]) => (
+                        <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#8B949E" }}>
+                          <span style={{ width: 9, height: 9, borderRadius: 3, background: STATUS_STYLE[k].bg, border: `1px solid ${STATUS_STYLE[k].border}` }} />{label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {memberList.length === 0 ? (
+                    <div style={{ ...card, fontSize: 13, color: "#8B949E", textAlign: "center", padding: "34px 18px" }}>
+                      등록된 원정대가 없습니다. 원정대 탭에서 먼저 등록해주세요.
+                    </div>
+                  ) : owners.map(m => (
+                    <div key={m.owner} data-scrollx="1" style={{ ...card, padding: 0 }}>
+                      <div style={{ minWidth: 780 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: clearGrid, gap: 8, alignItems: "center", padding: "12px 14px", background: "#1B2027", borderBottom: "1px solid #262C34" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                            <span style={{ width: 9, height: 9, borderRadius: "50%", background: m.mainAccount ? SUB_COLOR : "#C8F24C", flex: "none" }} />
+                            <span style={{ fontFamily: "'Archivo'", fontWeight: 700, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.owner}</span>
+                          </div>
+                          {RAID_CATEGORIES.map(cat => (
+                            <div key={cat} style={{ fontSize: 11, color: "#A8B0B9", fontWeight: 600, textAlign: "center", lineHeight: 1.3 }}>{CATEGORY_TITLE[cat]}</div>
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column" }}>
+                          {m.characters.map(c => (
+                            <div key={c.charName} style={{ display: "grid", gridTemplateColumns: clearGrid, gap: 8, alignItems: "center", padding: "8px 14px", borderBottom: "1px solid #1F242B", opacity: c.isExcluded ? .4 : 1 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                                {charThumb(c, 36)}
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.charName}</div>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                    {classLine(c)}
+                                    <span style={{ fontFamily: mono, fontSize: 10, color: "#C8F24C" }}>{c.level}</span>
+                                  </div>
+                                  {c.isExcluded && <div style={{ fontSize: 10, color: "#E1424F" }}>매칭 제외</div>}
+                                </div>
+                              </div>
+                              {RAID_CATEGORIES.map(cat => {
+                                const st = raidStatus(m.owner, c, cat);
+                                const sty = STATUS_STYLE[st.state];
+                                const [main, subLabel] = cellLabel(st);
+                                const locked = st.state === "locked";
+                                return (
+                                  <button
+                                    key={cat}
+                                    type="button"
+                                    disabled={locked}
+                                    onClick={() => handleToggleCharRaid(m.owner, c.charName, st.state === "done" ? st.highest.id : st.raid.id)}
+                                    title={locked ? "레벨 미달" : st.state === "done" ? `클릭하면 ${st.highest.name} 매칭에 다시 참여합니다` : "클릭하면 클리어 체크(매칭 제외)됩니다"}
+                                    style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, minHeight: 46, borderRadius: 10, background: sty.bg, border: `1px solid ${sty.border}`, color: sty.color, cursor: locked ? "default" : "pointer", padding: "6px 4px" }}
+                                  >
+                                    <span style={{ fontSize: 12, fontWeight: 700 }}>{main}</span>
+                                    <span style={{ fontSize: 10, opacity: .8, whiteSpace: "nowrap" }}>{subLabel}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
 
             {/* PARTIES */}
             {screen === "parties" && (
@@ -1315,14 +1504,10 @@ export default function Home() {
                 {isEditMode && (
                   <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 12, color: "#C6CDD4", background: "rgba(200,242,76,.06)", border: "1px solid rgba(200,242,76,.3)", borderRadius: 12, padding: "10px 14px" }}>
                     <span style={{ fontWeight: 700, color: "#C8F24C" }}>수동 편집 모드</span>
-                    {isTableView ? (
-                      <span>표 요약에서는 편집할 수 없습니다. <b>카드 보기</b>로 전환하세요.</span>
-                    ) : (
-                      <span>
-                        캐릭터를 클릭해 선택한 뒤, 교체할 <b>다른 캐릭터</b>나 <b>빈 자리</b>를 클릭하세요.
-                        {swapTarget && <span style={{ marginLeft: 6, color: "#C8F24C", fontWeight: 600 }}>· 선택됨: {swapTarget.charName}</span>}
-                      </span>
-                    )}
+                    <span>
+                      캐릭터를 클릭해 선택한 뒤, 교체할 <b>다른 캐릭터</b>나 <b>빈 자리</b>를 클릭하세요.{isTableView ? " (표에서도 이름을 눌러 편집할 수 있습니다)" : ""}
+                      {swapTarget && <span style={{ marginLeft: 6, color: "#C8F24C", fontWeight: 600 }}>· 선택됨: {swapTarget.charName}</span>}
+                    </span>
                     {swapTarget && (
                       <button onClick={() => setSwapTarget(null)} style={{ marginLeft: "auto", background: "transparent", border: "1px solid #333B45", color: "#8B949E", borderRadius: 9, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>선택 해제</button>
                     )}
@@ -1351,24 +1536,57 @@ export default function Home() {
                           const totalCP = (party.members || []).reduce((acc, cur) => acc + cur.combatPower, 0);
                           const avgCP = (party.members && party.members.length > 0) ? Math.floor(totalCP / party.members.length) : 0;
                           const td = { padding: "10px 12px", background: "#1B2027", borderTop: "1px solid #262C34", borderBottom: "1px solid #262C34", verticalAlign: "middle" };
-                          const names = (list) => list.map((m, idx) => (
-                            <span key={idx} style={{ display: "inline-flex", alignItems: "center", gap: 3, marginRight: 8, whiteSpace: "nowrap" }}>
-                              {CLASS_ICONS[m.className] && <img src={CLASS_ICONS[m.className]} alt={m.className} style={{ width: 12, height: 12, opacity: .85 }} />}
-                              {m.charName}
+                          // 수동 편집 모드에서는 이름 칩을 눌러 교체 / 빈 자리로 이동
+                          const names = (list, group, cap) => (
+                            <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 5, verticalAlign: "middle" }}>
+                              {list.map((m, idx) => {
+                                const selected = isEditMode && swapTarget && swapTarget.partyId === party.id
+                                  && swapTarget.owner === m.owner && swapTarget.charName === m.charName;
+                                const ownerHit = viewMode === "owner" && filterTarget && m.owner === filterTarget;
+                                return (
+                                  <span
+                                    key={idx}
+                                    onClick={isEditMode ? () => handleSlotClick(party.id, group, m) : undefined}
+                                    title={`${m.owner} · ${m.className} · Lv.${m.level}`}
+                                    style={{
+                                      display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", borderRadius: 999, padding: "3px 9px 3px 6px",
+                                      background: selected ? "rgba(200,242,76,.16)" : ownerHit ? "rgba(229,192,76,.14)" : "#20262E",
+                                      border: `1px solid ${selected ? "#C8F24C" : ownerHit ? "rgba(229,192,76,.5)" : isEditMode ? "#3A434E" : "#2C333C"}`,
+                                      color: selected ? "#C8F24C" : ownerHit ? "#F2D98A" : "#D5DBE1",
+                                      cursor: isEditMode ? "pointer" : "default"
+                                    }}
+                                  >
+                                    {CLASS_ICONS[m.className] && <img src={CLASS_ICONS[m.className]} alt={m.className} style={{ width: 12, height: 12, opacity: .85 }} />}
+                                    {m.charName}
+                                    {HYBRID_CLASSES.includes(m.className) && m.role === "서포터" && <span style={{ fontSize: 9, color: SUP_COLOR, fontWeight: 700 }}>SUP</span>}
+                                  </span>
+                                );
+                              })}
+                              {isEditMode && Array.from({ length: Math.max(0, cap - list.length) }).map((_, eIdx) => (
+                                <span
+                                  key={`e-${eIdx}`}
+                                  onClick={swapTarget ? () => handleSlotClick(party.id, group, null) : undefined}
+                                  style={{ display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "3px 10px", fontSize: 11, whiteSpace: "nowrap",
+                                    border: `1px dashed ${swapTarget ? "rgba(200,242,76,.6)" : "#333B45"}`, color: swapTarget ? "#C8F24C" : "#4A525C",
+                                    cursor: swapTarget ? "pointer" : "default" }}
+                                >
+                                  {swapTarget ? "+ 여기로" : "빈 자리"}
+                                </span>
+                              ))}
                             </span>
-                          ));
+                          );
                           return (
                             <tr key={party.id} style={{ opacity: party.cleared ? .45 : 1 }}>
                               <td style={{ ...td, borderLeft: "1px solid #262C34", borderRadius: "12px 0 0 12px", fontFamily: mono, color: "#8B949E" }}>{String(index + 1).padStart(2, "0")}</td>
                               <td style={{ ...td, fontWeight: 700, whiteSpace: "nowrap", color: isSingle ? "#B9A4FF" : "#E8EAEC", textDecoration: party.cleared ? "line-through" : "none" }}>{party.raidName}</td>
                               <td style={{ ...td, color: "#C6CDD4" }}>
                                 {party.type === 8 && !isSingle ? (
-                                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                                    <div><span style={{ fontFamily: mono, color: DLR_COLOR, marginRight: 8 }}>1파티</span>{names(party.g1 || [])}</div>
-                                    <div><span style={{ fontFamily: mono, color: SUP_COLOR, marginRight: 8 }}>2파티</span>{names(party.g2 || [])}</div>
+                                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                    <div><span style={{ fontFamily: mono, color: DLR_COLOR, marginRight: 8, verticalAlign: "middle" }}>1파티</span>{names(party.g1 || [], "g1", 4)}</div>
+                                    <div><span style={{ fontFamily: mono, color: SUP_COLOR, marginRight: 8, verticalAlign: "middle" }}>2파티</span>{names(party.g2 || [], "g2", 4)}</div>
                                   </div>
                                 ) : (
-                                  <div>{names(party.members || [])}</div>
+                                  <div>{names(party.members || [], "members", isSingle ? 0 : party.type)}</div>
                                 )}
                               </td>
                               <td style={{ ...td, textAlign: "right", fontFamily: mono, whiteSpace: "nowrap" }}>
@@ -1432,7 +1650,7 @@ export default function Home() {
                               </div>
                               <div style={{ fontFamily: "'Archivo'", fontWeight: 800, fontSize: "clamp(20px,3vw,26px)", lineHeight: 1.1, textDecoration: party.cleared ? "line-through" : "none", textShadow: "0 4px 18px rgba(0,0,0,.5)" }}>{party.raidName}</div>
                               <div style={{ fontFamily: mono, fontSize: 11, color: "#8B949E", marginTop: 6 }}>
-                                {party.category} · 인원 {(party.members || []).length}{!isSingle && `/${party.type}`} · 권장 Lv.{party.minLevel}
+                                {isSingle ? "미편성" : `${party.type}인 레이드`} · 인원 {(party.members || []).length}{!isSingle && `/${party.type}`} · 권장 Lv.{party.minLevel}
                               </div>
                             </div>
                             {!isSingle && (
@@ -1486,95 +1704,6 @@ export default function Home() {
               </div>
             )}
           </div>
-
-          {/* right rail */}
-          <div className="rightRail hideOnPhone" style={{ flex: "1 1 320px", minWidth: 270, maxWidth: 420, display: "flex", flexDirection: "column", gap: 12, animation: "slideInR .55s cubic-bezier(.2,.7,.3,1) both" }}>
-            <div data-lift="1" style={{ ...glass, position: "relative", overflow: "hidden" }}>
-              <div style={{ position: "absolute", top: -50, right: -30, width: 170, height: 170, borderRadius: "50%", background: "rgba(255,75,87,.13)", filter: "blur(8px)", animation: "floaty 7s ease-in-out infinite" }} />
-              <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>이번 주 레이드</div>
-                  <div style={{ fontSize: 11, color: "#8B949E", fontFamily: mono }}>{today}</div>
-                </div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button onClick={() => setScreen("roster")} title="원정대 관리" style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#C6CDD4", fontSize: 12, cursor: "pointer" }}>☰</button>
-                  <button onClick={() => setScreen("parties")} title="파티 편성" style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#C6CDD4", fontSize: 12, cursor: "pointer" }}>⤢</button>
-                </div>
-              </div>
-              <div style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginBottom: 18 }}>
-                {[
-                  ["원정대", memberList.length, "#FF4B57"],
-                  ["캐릭터", activeChars, "#2FD3B7"],
-                  ["파티", formedParties.length, "#C8F24C"],
-                ].map(([label, value, color]) => (
-                  <div key={label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-                    <div style={{ width: 52, height: 52, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Archivo'", fontWeight: 800, fontSize: 18, color: "#0B0D10", background: color, boxShadow: "0 0 0 3px rgba(255,255,255,.08), 0 10px 24px rgba(0,0,0,.4)" }}>{value}</div>
-                    <div style={{ fontSize: 11, color: "#8B949E" }}>{label}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-                  <span style={{ color: "#8B949E" }}>클리어 진행</span>
-                  <span style={{ fontFamily: mono }}>{clearedCount} / {formedParties.length}</span>
-                </div>
-                <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${clearRate}%`, borderRadius: 999, background: "linear-gradient(90deg,#FF4B57,#C8F24C)", transition: "width .5s cubic-bezier(.2,.7,.3,1)" }} />
-                </div>
-              </div>
-              <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 18 }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600 }}>자동 조합 준비?</div>
-                  <div style={{ fontSize: 11, color: "#8B949E" }}>{partyResult.length ? `${formedParties.length}파티 편성됨 · 미편성 ${unassignedCount}` : `${activeChars}캐릭터 대기 · 미편성`}</div>
-                </div>
-                <button onClick={() => { generateParties(); if (memberList.length) setScreen("parties"); }} style={{ flex: "none", background: "#C8F24C", color: "#0B0D10", border: "none", borderRadius: 999, padding: "11px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer", animation: "glowPulse 3.6s ease-in-out infinite" }}>✦ 자동 조합</button>
-              </div>
-            </div>
-
-            <div data-lift="1" style={{ background: "rgba(240,240,244,.96)", borderRadius: 22, padding: 16, boxShadow: "0 20px 50px rgba(0,0,0,.35)" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#15181C" }}>레이드별 진행 현황</div>
-                <div style={{ fontFamily: mono, fontSize: 11, color: "#5E6570" }}>{raidProgress.length ? `${raidProgress.length}개 레이드` : "대기"}</div>
-              </div>
-              {raidProgress.length ? (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
-                  {raidProgress.map(({ raid, formed, cleared, singles }) => {
-                    const done = formed > 0 && cleared === formed;
-                    const onlySingles = formed === 0;
-                    const bg = done ? "#1D2229" : onlySingles ? "#E1424F" : "#E2E4E9";
-                    const fg = done || onlySingles ? "#F5F6F8" : "#15181C";
-                    return (
-                      <button
-                        key={raid.id}
-                        onClick={() => { setScreen("parties"); setViewMode("raid"); setFilterTarget(raid.name); }}
-                        style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, borderRadius: 14, padding: "11px 12px", background: bg, color: fg, border: "none", cursor: "pointer", textAlign: "left", opacity: onlySingles ? .8 : 1 }}
-                      >
-                        <div style={{ fontSize: 12, fontWeight: 700 }}>{raid.name}</div>
-                        <div style={{ fontSize: 10, opacity: .85 }}>
-                          {done ? "클리어 완료" : onlySingles ? "편성 불가" : `${formed}파티 · 클리어 ${cleared}`}
-                          {singles > 0 && ` · 미편성 ${singles}`}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div style={{ fontSize: 12, color: "#5E6570", padding: "10px 0" }}>아직 자동 조합 전입니다. 원정대를 등록하고 자동 조합을 눌러주세요.</div>
-              )}
-            </div>
-
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              {[
-                ["클리어율", `${clearRate}%`, "#C8F24C"],
-                ["미편성 캐릭터", String(unassignedCount), "#E8EAEC"]
-              ].map(([label, value, color]) => (
-                <div key={label} data-lift="1" style={{ flex: "1 1 120px", minWidth: 120, background: "rgba(16,20,25,.72)", backdropFilter: "blur(14px)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 20, padding: 16 }}>
-                  <div style={{ fontSize: 11, color: "#8B949E", marginBottom: 10 }}>{label}</div>
-                  <div style={{ fontFamily: "'Archivo'", fontWeight: 800, fontSize: 30, color }}>{value}</div>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
 
@@ -1585,6 +1714,7 @@ export default function Home() {
           <span style={{ width: 22, height: 1, background: "#2C333C" }} />
         </div>
         <div style={{ fontFamily: mono, fontSize: 11, color: "#3E454E" }}>오류 및 버그 제보 atom11201202@gmail.com</div>
+        <div style={{ fontFamily: mono, fontSize: 10, color: "#3E454E", textAlign: "center" }}>배경 일러스트 © Smilegate RPG · <a href="https://lostark.game.onstove.com/Artwork" target="_blank" rel="noreferrer" style={{ color: "#5A626C" }}>로스트아크 공식 아트웍</a> (CC BY-NC-SA 4.0)</div>
       </div>
     </div>
   );

@@ -296,7 +296,21 @@ export default function Home() {
           }
           return m;
         });
-        saveToLocalStorage(updatedMembers, partyResult);
+
+        // 갱신된 레벨·전투력·초상화를 이미 편성된 파티에도 바로 반영
+        const fresh = new Map(data.map(char => [char.CharacterName, char]));
+        const refreshChar = (c) => {
+          if (c.owner !== ownerName || !fresh.has(c.charName)) return c;
+          const f = fresh.get(c.charName);
+          return { ...c, level: f.ItemLevel, combatPower: f.CombatPower, characterImage: f.CharacterImage || c.characterImage };
+        };
+        const updatedParties = partyResult.map(p => ({
+          ...p,
+          members: (p.members || []).map(refreshChar),
+          g1: (p.g1 || []).map(refreshChar),
+          g2: (p.g2 || []).map(refreshChar),
+        }));
+        saveToLocalStorage(updatedMembers, updatedParties);
       } else {
         alert("원정대 갱신에 실패했습니다.");
       }
@@ -1035,7 +1049,8 @@ export default function Home() {
   const mono = "'IBM Plex Mono'";
   const fadeUp = "fadeUp .45s cubic-bezier(.2,.7,.3,1) both";
 
-  const roleBadge = (member, ownerName, stop) => {
+  // editable=false 이면 표시만 (파티 편성 화면에서는 역할 전환 불가 — 원정대 관리에서만)
+  const roleBadge = (member, ownerName, editable = true) => {
     const isHybrid = HYBRID_CLASSES.includes(member.className);
     const isSup = isHybrid && member.role === "서포터";
     const color = isSup ? SUP_COLOR : DLR_COLOR;
@@ -1044,11 +1059,12 @@ export default function Home() {
       background: `${color}1A`, border: `1px solid ${color}55`, borderRadius: 999, padding: "3px 9px", whiteSpace: "nowrap", flex: "none"
     };
     if (!isHybrid) return <span style={style}><RoleIcon sup={false} />딜러</span>;
+    if (!editable) return <span style={style}><RoleIcon sup={isSup} />{isSup ? "서포터" : "딜러"}</span>;
     return (
       <button
         type="button"
         title="클릭하여 딜러/서포터 전환"
-        onClick={(e) => { if (stop) e.stopPropagation(); handleToggleRole(ownerName, member.charName); }}
+        onClick={() => handleToggleRole(ownerName, member.charName)}
         style={{ ...style, cursor: "pointer" }}
       >
         <RoleIcon sup={isSup} />{isSup ? "서포터" : "딜러"} <span style={{ opacity: .6 }}>⇄</span>
@@ -1130,7 +1146,7 @@ export default function Home() {
               </div>
             )}
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(27,32,39,0) 55%,rgba(27,32,39,.95) 100%)" }} />
-          <div style={{ position: "absolute", top: 8, left: 8 }}>{roleBadge(member, ownerName, false)}</div>
+          <div style={{ position: "absolute", top: 8, left: 8 }}>{roleBadge(member, ownerName)}</div>
           <div style={{ position: "absolute", left: 10, bottom: 6, fontFamily: mono, fontSize: 15, fontWeight: 700, color: "#C8F24C", textShadow: "0 2px 8px rgba(0,0,0,.8)" }}>Lv.{member.level}</div>
         </div>
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 4, padding: "8px 10px 0", opacity: active ? 1 : .45 }}>
@@ -1187,7 +1203,7 @@ export default function Home() {
       >
         {charArt(member, bg)}
         <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-          {roleBadge(member, member.owner, true)}
+          {roleBadge(member, member.owner, false)}
           {isSelected && <span style={{ fontFamily: mono, fontSize: 10, color: "#C8F24C", letterSpacing: ".08em" }}>SELECTED</span>}
         </div>
         <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>

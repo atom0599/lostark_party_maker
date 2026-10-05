@@ -471,6 +471,49 @@ export default function Home() {
     return best || { parties: [], leftovers: [...all] };
   };
 
+  // 같은 레이드에 파티가 여러 개면 파티끼리 평균 전투력이 비슷해지도록
+  // 같은 역할(서포터↔서포터, 딜러↔딜러)끼리 파티 간 맞교환을 반복한다.
+  // 맞교환이라 파티 인원·서폿/딜러 수는 그대로이고, 직업·원정대(부계정 포함) 중복 금지도 지킨다.
+  const balanceRaidParties = (parties) => {
+    if (parties.length < 2) return parties;
+    const ps = parties.map(p => [...p]);
+    const avg = (p) => p.reduce((s, c) => s + (c.combatPower || 0), 0) / p.length;
+    const cost = () => {
+      const a = ps.map(avg);
+      const mean = a.reduce((s, x) => s + x, 0) / a.length;
+      return a.reduce((s, x) => s + (x - mean) ** 2, 0);
+    };
+    const isSup = (c) => c.role === "서포터";
+    const canJoin = (party, c, leaving) =>
+      party.every(m => m === leaving || (m.className !== c.className && m.ownerGroup !== c.ownerGroup));
+
+    let cur = cost();
+    for (let iter = 0; iter < 300; iter++) {
+      let best = null;
+      for (let i = 0; i < ps.length; i++) {
+        for (let j = i + 1; j < ps.length; j++) {
+          for (let x = 0; x < ps[i].length; x++) {
+            for (let y = 0; y < ps[j].length; y++) {
+              const a = ps[i][x], b = ps[j][y];
+              if (isSup(a) !== isSup(b)) continue;
+              if (!canJoin(ps[j], a, b) || !canJoin(ps[i], b, a)) continue;
+              ps[i][x] = b; ps[j][y] = a;
+              const c = cost();
+              ps[i][x] = a; ps[j][y] = b;
+              if (c < cur - 1e-6 && (!best || c < best.c)) best = { i, j, x, y, c };
+            }
+          }
+        }
+      }
+      if (!best) break;
+      const t = ps[best.i][best.x];
+      ps[best.i][best.x] = ps[best.j][best.y];
+      ps[best.j][best.y] = t;
+      cur = best.c;
+    }
+    return ps;
+  };
+
   const balanceEightManParty = (members) => {
     const sorted = [...members].sort((a, b) => b.combatPower - a.combatPower);
     const g1 = [];
@@ -643,7 +686,7 @@ export default function Home() {
 
       // 직업/원정대 중복 없이, 최대한 많은 캐릭터를 파티에 채워 넣는다.
       const packed = packRaid(eligibleSupports, eligibleDealers, raid.type);
-      const assignedParties = packed.parties;
+      const assignedParties = balanceRaidParties(packed.parties);
       const leftovers = packed.leftovers;
 
       const raidParties = [];

@@ -114,6 +114,7 @@ const CLASS_ICONS = {
 
 export default function Home() {
   const [searchName, setSearchName] = useState("");
+  const [searchRealName, setSearchRealName] = useState("");
   const [memberList, setMemberList] = useState([]);
   const [partyResult, setPartyResult] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -161,6 +162,26 @@ export default function Home() {
   };
 
   // 원정대(부계정)의 본계정 지정 / 해제
+  // 원정대 주인의 실명 지정 / 수정
+  const handleSetRealName = (ownerName, realName) => {
+    const updated = memberList.map(m =>
+      m.owner === ownerName ? { ...m, realName: realName.trim() } : m
+    );
+    saveToLocalStorage(updated, partyResult);
+  };
+
+  // 실명: 본인 원정대에 없으면 본계정(최상위)의 실명을 따른다
+  const realNameOf = (owner) => {
+    const m = memberList.find(x => x.owner === owner);
+    if (m && m.realName) return m.realName;
+    const root = memberList.find(x => x.owner === rootOwner(owner));
+    return (root && root.realName) || "";
+  };
+  const ownerLabel = (owner) => {
+    const real = realNameOf(owner);
+    return real ? `${owner} (${real})` : owner;
+  };
+
   const handleSetMainAccount = (ownerName, mainOwnerName) => {
     const updated = memberList.map(m =>
       m.owner === ownerName ? { ...m, mainAccount: mainOwnerName || null } : m
@@ -182,6 +203,7 @@ export default function Home() {
         
         const newMember = {
           owner: searchName,
+          realName: searchRealName.trim(),
           characters: data.map(char => {
             const defaultAllowed = categories.map(cat => {
               const raidsInCat = RAID_LIST.filter(r => r.category === cat && char.ItemLevel >= r.minLevel);
@@ -204,6 +226,7 @@ export default function Home() {
         };
         saveToLocalStorage([...memberList, newMember], partyResult);
         setSearchName("");
+        setSearchRealName("");
       } else {
         alert(data.error || "캐릭터를 조회할 수 없습니다.");
       }
@@ -839,7 +862,7 @@ export default function Home() {
   };
 
   const classLine = (member, color = "#8B949E") => (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color, whiteSpace: "nowrap", flex: "none" }}>
       {CLASS_ICONS[member.className] && (
         <img src={CLASS_ICONS[member.className]} alt={member.className} style={{ width: 13, height: 13, opacity: .9, flex: "none" }} />
       )}
@@ -902,18 +925,16 @@ export default function Home() {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, opacity: active ? 1 : .45 }}>
           {charThumb(member)}
-          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-              <span style={{ fontSize: 15, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textDecoration: active ? "none" : "line-through" }}>{member.charName}</span>
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={{ fontSize: 15, fontWeight: 700, wordBreak: "break-all", lineHeight: 1.25, textDecoration: active ? "none" : "line-through" }}>{member.charName}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+              {classLine(member, "#A8B0B9")}
               {roleBadge(member, ownerName, false)}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-              {classLine(member, "#A8B0B9")}
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, fontFamily: mono }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "#C8F24C" }}>Lv.{member.level}</span>
+              <span style={{ fontSize: 11, color: "#8B949E" }}>CP {member.combatPower.toLocaleString()}</span>
             </div>
-          </div>
-          <div style={{ textAlign: "right", flex: "none" }}>
-            <div style={{ fontFamily: mono, fontSize: 15, fontWeight: 600, color: "#C8F24C" }}>{member.level}</div>
-            <div style={{ fontFamily: mono, fontSize: 11, color: "#8B949E" }}>CP {member.combatPower.toLocaleString()}</div>
           </div>
         </div>
         {active && (
@@ -981,9 +1002,9 @@ export default function Home() {
           {isSelected && <span style={{ fontFamily: mono, fontSize: 10, color: "#C8F24C", letterSpacing: ".08em" }}>SELECTED</span>}
         </div>
         <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: isTargetOwner ? "#F2D98A" : "#E8EAEC" }}>{member.charName}</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, fontSize: 11, color: isTargetOwner ? "#E5C04C" : "#8B949E" }}>
-            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: "0 1 auto" }}>{member.owner}</span>
+          <span style={{ fontSize: 14, fontWeight: 700, wordBreak: "break-all", lineHeight: 1.25, color: isTargetOwner ? "#F2D98A" : "#E8EAEC" }}>{member.charName}</span>
+          <span style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, minWidth: 0, fontSize: 11, color: isTargetOwner ? "#E5C04C" : "#8B949E" }}>
+            <span style={{ wordBreak: "break-all" }}>{ownerLabel(member.owner)}</span>
             <span style={{ color: "#4A525C" }}>·</span>
             {classLine(member, isTargetOwner ? "#E5C04C" : "#8B949E")}
           </span>
@@ -1095,8 +1116,9 @@ export default function Home() {
                       </div>
                       <div style={{ flex: 1, minWidth: 0, display: "flex", flexWrap: "wrap", gap: 5 }}>
                         {members.map((m, i) => (
-                          <span key={i} title={`${m.owner} · ${m.className}`} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#C6CDD4", background: "#14181D", border: "1px solid #2C333C", borderRadius: 999, padding: "3px 9px 3px 7px", whiteSpace: "nowrap" }}>
-                            <RoleIcon sup={HYBRID_CLASSES.includes(m.className) && m.role === "서포터"} size={10} />
+                          <span key={i} title={`${ownerLabel(m.owner)} · ${m.className}`} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "#C6CDD4", background: "#14181D", border: "1px solid #2C333C", borderRadius: 999, padding: "3px 10px 3px 7px", whiteSpace: "nowrap" }}>
+                            {CLASS_ICONS[m.className] && <img src={CLASS_ICONS[m.className]} alt={m.className} style={{ width: 13, height: 13, opacity: .9 }} />}
+                            <RoleIcon sup={HYBRID_CLASSES.includes(m.className) && m.role === "서포터"} size={9} />
                             {m.charName}
                           </span>
                         ))}
@@ -1181,7 +1203,7 @@ export default function Home() {
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: ".14em", color: "#FF4B57", marginBottom: 6 }}>RAID SETTINGS</div>
-                <div style={{ fontFamily: "'Archivo'", fontWeight: 800, fontSize: 22, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedCharForConfig.char.charName}</div>
+                <div style={{ fontFamily: "'Archivo'", fontWeight: 800, fontSize: 22, wordBreak: "break-all", lineHeight: 1.25 }}>{selectedCharForConfig.char.charName}</div>
                 <div style={{ fontSize: 12, color: "#8B949E", marginTop: 4 }}>
                   {selectedCharForConfig.owner} 원정대 · {selectedCharForConfig.char.className} · <span style={{ fontFamily: mono, color: "#C8F24C" }}>Lv.{selectedCharForConfig.char.level}</span>
                 </div>
@@ -1371,6 +1393,13 @@ export default function Home() {
                     placeholder="공대원 대표 캐릭터명을 입력하세요"
                     style={{ ...input, flex: "1 1 260px", minWidth: 180 }}
                   />
+                  <input
+                    type="text"
+                    value={searchRealName}
+                    onChange={(e) => setSearchRealName(e.target.value)}
+                    placeholder="실명 (선택)"
+                    style={{ ...input, flex: "0 1 180px", minWidth: 120 }}
+                  />
                   <button type="submit" disabled={loading} style={{ background: "#C8F24C", color: "#0B0D10", border: "none", borderRadius: 10, padding: "11px 18px", fontSize: 13, fontWeight: 700, cursor: loading ? "default" : "pointer", opacity: loading ? .6 : 1, minWidth: 110 }}>
                     {loading ? "조회 중…" : "원정대 등록"}
                   </button>
@@ -1391,7 +1420,8 @@ export default function Home() {
                             <div style={{ minWidth: 0, flex: "1 1 220px" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
                                 <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#C8F24C", flex: "none" }} />
-                                <span style={{ fontFamily: "'Archivo'", fontWeight: 800, fontSize: 22, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.main.owner}</span>
+                                <span style={{ fontFamily: "'Archivo'", fontWeight: 800, fontSize: 22, wordBreak: "break-all" }}>{g.main.owner}</span>
+                                {realNameOf(g.main.owner) && <span style={{ fontSize: 14, fontWeight: 600, color: "#C6CDD4" }}>{realNameOf(g.main.owner)}</span>}
                               </div>
                               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
                                 <span style={{ fontSize: 11, color: "#8B949E" }}>{g.accounts.length > 1 ? `원정대 ${g.accounts.length}개 통합` : "원정대 1개"}</span>
@@ -1426,6 +1456,15 @@ export default function Home() {
                                     ? { color: "#C8F24C", background: "rgba(200,242,76,.1)", border: "1px solid rgba(200,242,76,.3)" }
                                     : { color: SUB_COLOR, background: "rgba(180,120,255,.12)", border: "1px solid rgba(180,120,255,.35)" }) }}>{isMain ? "본계정" : "부계정"}</span>
                                   <span style={{ fontSize: 14, fontWeight: 700 }}>{a.owner} 원정대</span>
+                                  <input
+                                    key={`${a.owner}-${a.realName || ""}`}
+                                    defaultValue={a.realName || ""}
+                                    onBlur={(e) => { if ((a.realName || "") !== e.target.value.trim()) handleSetRealName(a.owner, e.target.value); }}
+                                    onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                                    placeholder={isMain ? "실명 입력" : (realNameOf(a.owner) ? `실명 (${realNameOf(a.owner)})` : "실명 입력")}
+                                    title="실명 — 입력 후 Enter 또는 바깥을 누르면 저장됩니다"
+                                    style={{ ...input, width: 120, padding: "5px 9px", fontSize: 12, borderRadius: 8 }}
+                                  />
                                   {g.accounts.length > 1 && (
                                     <span style={{ fontFamily: mono, fontSize: 11, color: "#8B949E" }}>
                                       {ast.count}캐릭 · 평균 Lv <span style={{ color: "#C8F24C" }}>{ast.avgLevel}</span> · 평균 CP {ast.avgCP}
@@ -1481,7 +1520,7 @@ export default function Home() {
                 }));
                 return { cat, left, done };
               });
-              const clearGrid = `minmax(170px,1.4fr) repeat(${RAID_CATEGORIES.length},minmax(118px,1fr))`;
+              const clearGrid = `minmax(200px,1.4fr) repeat(${RAID_CATEGORIES.length},minmax(118px,1fr))`;
               const cellLabel = (st) => {
                 switch (st.state) {
                   case "locked": return ["—", "레벨 미달"];
@@ -1531,7 +1570,7 @@ export default function Home() {
                     <div data-scrollx="1" style={{ display: "flex", gap: 6, minWidth: 0 }}>
                       <button onClick={() => setClearOwner("")} style={pill(!clearOwner || !memberList.some(m => m.owner === clearOwner))}>전체 원정대</button>
                       {memberList.map(m => (
-                        <button key={m.owner} onClick={() => setClearOwner(m.owner)} style={pill(clearOwner === m.owner)}>{m.owner}</button>
+                        <button key={m.owner} onClick={() => setClearOwner(m.owner)} style={pill(clearOwner === m.owner)}>{ownerLabel(m.owner)}</button>
                       ))}
                     </div>
                     <div style={{ flex: 1 }} />
@@ -1554,7 +1593,8 @@ export default function Home() {
                         <div style={{ display: "grid", gridTemplateColumns: clearGrid, gap: 8, alignItems: "center", padding: "12px 14px", background: "#1B2027", borderBottom: "1px solid #262C34" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                             <span style={{ width: 9, height: 9, borderRadius: "50%", background: m.mainAccount ? SUB_COLOR : "#C8F24C", flex: "none" }} />
-                            <span style={{ fontFamily: "'Archivo'", fontWeight: 700, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.owner}</span>
+                            <span style={{ fontFamily: "'Archivo'", fontWeight: 700, fontSize: 16, wordBreak: "break-all" }}>{m.owner}</span>
+                            {realNameOf(m.owner) && <span style={{ fontSize: 12, color: "#A8B0B9", whiteSpace: "nowrap" }}>{realNameOf(m.owner)}</span>}
                           </div>
                           {RAID_CATEGORIES.map(cat => (
                             <div key={cat} style={{ fontSize: 11, color: "#A8B0B9", fontWeight: 600, textAlign: "center", lineHeight: 1.3 }}>{CATEGORY_TITLE[cat]}</div>
@@ -1566,7 +1606,7 @@ export default function Home() {
                               <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                                 {charThumb(c, 36)}
                                 <div style={{ minWidth: 0 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.charName}</div>
+                                  <div style={{ fontSize: 13, fontWeight: 700, wordBreak: "break-all", lineHeight: 1.25 }}>{c.charName}</div>
                                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                                     {classLine(c)}
                                     <span style={{ fontFamily: mono, fontSize: 10, color: "#C8F24C" }}>{c.level}</span>
@@ -1662,7 +1702,7 @@ export default function Home() {
                   {viewMode === "owner" && (
                     <select value={filterTarget} onChange={(e) => setFilterTarget(e.target.value)} style={selectStyle}>
                       {memberList.map((m, idx) => (
-                        <option key={idx} value={m.owner}>{m.owner} 원정대</option>
+                        <option key={idx} value={m.owner}>{ownerLabel(m.owner)} 원정대</option>
                       ))}
                     </select>
                   )}
@@ -1724,7 +1764,7 @@ export default function Home() {
                                   <span
                                     key={idx}
                                     onClick={isEditMode ? () => handleSlotClick(party.id, group, m) : undefined}
-                                    title={`${m.owner} · ${m.className} · Lv.${m.level}`}
+                                    title={`${ownerLabel(m.owner)} · ${m.className} · Lv.${m.level}`}
                                     style={{
                                       display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", borderRadius: 999, padding: "3px 9px 3px 6px",
                                       background: selected ? "rgba(200,242,76,.16)" : ownerHit ? "rgba(229,192,76,.14)" : "#20262E",

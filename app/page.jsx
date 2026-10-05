@@ -11,8 +11,29 @@ const BG_SEQ = [
 ];
 const HYBRID_CLASSES = ["바드", "홀리나이트", "도화가", "발키리"];
 const DLR_COLOR = "#FF4B57";
-const SUP_COLOR = "#2FD3B7";
+const SUP_COLOR = "#4ADE80";
+const G1_COLOR = "#4C9AFF";
+const G2_COLOR = "#FF8A4C";
 const SUB_COLOR = "#B478FF";
+
+// 서포터 = 초록 십자가, 딜러 = 칼
+function RoleIcon({ sup, size = 11 }) {
+  if (sup) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 12 12" aria-label="서포터" style={{ flex: "none" }}>
+        <path d="M4.4 .8h3.2v3.6h3.6v3.2H7.6v3.6H4.4V7.6H.8V4.4h3.6z" fill={SUP_COLOR} />
+      </svg>
+    );
+  }
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-label="딜러" fill="none" stroke={DLR_COLOR} strokeWidth="1.9" strokeLinecap="round" style={{ flex: "none" }}>
+      <path d="M14.5 1.5 L6.8 9.2" />
+      <path d="M14.5 1.5 L12.2 2.1 M14.5 1.5 L13.9 3.8" />
+      <path d="M4.6 7.4 L8.6 11.4" />
+      <path d="M5.6 10.4 L2.2 13.8" />
+    </svg>
+  );
+}
 
 const RAID_LIST = [
   { id: 1, category: "벨가르딘", name: "죽음의 계율자, 벨가르딘 노말", type: 8, minLevel: 1750, reqSup: 2, reqDlr: 6 },
@@ -663,6 +684,7 @@ export default function Home() {
   const swapping = useRef(false);
 
   const [clearOwner, setClearOwner] = useState("");
+  const [clearTab, setClearTab] = useState("party");
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 1500);
@@ -753,6 +775,31 @@ export default function Home() {
   const clearedCount = formedParties.filter(p => p.cleared).length;
   const unassignedCount = partyResult.filter(isSingleParty).reduce((s, p) => s + (p.members || []).length, 0);
 
+  // 본계정 + 부계정을 한 사람으로 묶은 원정대 그룹 (등록 순서 유지)
+  const rosterGroups = (() => {
+    const map = new Map();
+    memberList.forEach(m => {
+      const key = rootOwner(m.owner);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(m);
+    });
+    return [...map.entries()].map(([key, accounts]) => {
+      const main = accounts.find(a => a.owner === key) || accounts[0];
+      return { key, main, accounts: [main, ...accounts.filter(a => a !== main)] };
+    });
+  })();
+  const charStats = (chars) => {
+    const n = chars.length;
+    const sum = (f) => chars.reduce((s, c) => s + (Number(c[f]) || 0), 0);
+    return {
+      count: n,
+      active: chars.filter(c => !c.isExcluded).length,
+      avgLevel: n ? (sum("level") / n).toFixed(1) : "—",
+      avgCP: n ? Math.round(sum("combatPower") / n).toLocaleString() : "—",
+      maxLevel: n ? Math.max(...chars.map(c => Number(c.level) || 0)).toFixed(1) : "—",
+    };
+  };
+
   /* ---------- style helpers ---------- */
   const pill = (active, accent = "#FF4B57") => ({
     borderRadius: 999, padding: "9px 15px", fontSize: 13, fontWeight: active ? 700 : 500, cursor: "pointer",
@@ -778,7 +825,7 @@ export default function Home() {
       display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 700, color,
       background: `${color}1A`, border: `1px solid ${color}55`, borderRadius: 999, padding: "3px 9px", whiteSpace: "nowrap", flex: "none"
     };
-    if (!isHybrid) return <span style={style}>딜러</span>;
+    if (!isHybrid) return <span style={style}><RoleIcon sup={false} />딜러</span>;
     return (
       <button
         type="button"
@@ -786,7 +833,7 @@ export default function Home() {
         onClick={(e) => { if (stop) e.stopPropagation(); handleToggleRole(ownerName, member.charName); }}
         style={{ ...style, cursor: "pointer" }}
       >
-        {isSup ? "서포터" : "딜러"} <span style={{ opacity: .7 }}>⇄</span>
+        <RoleIcon sup={isSup} />{isSup ? "서포터" : "딜러"} <span style={{ opacity: .6 }}>⇄</span>
       </button>
     );
   };
@@ -983,6 +1030,89 @@ export default function Home() {
     </div>
   );
 
+  // 클리어 현황 > 파티별 클리어: 파티 단위로 클리어 표시를 토글하는 유일한 곳
+  const renderPartyClear = () => {
+    if (formedParties.length === 0) {
+      return (
+        <div style={{ ...card, fontSize: 13, color: "#8B949E", textAlign: "center", padding: "34px 18px" }}>
+          아직 편성된 파티가 없습니다. 파티 편성 탭에서 [최적 파티 자동 조합]을 먼저 눌러주세요.
+        </div>
+      );
+    }
+    const pct = Math.round((clearedCount / formedParties.length) * 100);
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ ...card, display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ fontFamily: "'Archivo'", fontWeight: 800, fontSize: 34, color: "#C8F24C" }}>{clearedCount}</span>
+            <span style={{ fontSize: 13, color: "#8B949E" }}>/ {formedParties.length} 파티 클리어</span>
+          </div>
+          <div style={{ flex: "1 1 240px", height: 8, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${pct}%`, borderRadius: 999, background: "linear-gradient(90deg,#2FD3B7,#C8F24C)", transition: "width .4s ease" }} />
+          </div>
+          <span style={{ fontFamily: mono, fontSize: 13, color: "#C6CDD4" }}>{pct}%</span>
+        </div>
+
+        {RAID_CATEGORIES.map(cat => {
+          const list = formedParties
+            .filter(p => p.category === cat)
+            .sort((a, b) => (a.originalRaidId - b.originalRaidId) || ((a.partyNum || 0) - (b.partyNum || 0)));
+          if (!list.length) return null;
+          const done = list.filter(p => p.cleared).length;
+          return (
+            <div key={cat} style={{ ...card, padding: 0, overflow: "hidden" }}>
+              <div style={{ position: "relative", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "14px 18px", borderBottom: "1px solid #262C34" }}>
+                <img src={getRaidIllustration(list[0].originalRaidId)} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .2 }} />
+                <span style={{ position: "relative", fontFamily: "'Archivo'", fontWeight: 800, fontSize: 18 }}>{CATEGORY_TITLE[cat]}</span>
+                <span style={{ position: "relative", fontFamily: mono, fontSize: 12, color: done === list.length ? "#C8F24C" : "#C6CDD4" }}>{done} / {list.length} 클리어</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10 }}>
+                {list.map(party => {
+                  const members = party.type === 8 ? [...(party.g1 || []), ...(party.g2 || [])] : (party.members || []);
+                  return (
+                    <button
+                      key={party.id}
+                      type="button"
+                      data-row="1"
+                      onClick={() => handlePartyClear(party)}
+                      title={party.cleared ? "클릭하면 클리어 표시를 취소합니다" : "클릭하면 클리어로 표시합니다"}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 14, textAlign: "left", width: "100%", cursor: "pointer",
+                        background: party.cleared ? "rgba(200,242,76,.07)" : "#1B2027",
+                        border: `1px solid ${party.cleared ? "rgba(200,242,76,.4)" : "#262C34"}`,
+                        borderRadius: 12, padding: "10px 14px", color: "#E8EAEC"
+                      }}
+                    >
+                      <span style={{
+                        width: 26, height: 26, borderRadius: 8, flex: "none", display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 15, fontWeight: 800,
+                        background: party.cleared ? "#C8F24C" : "transparent", color: "#0B0D10",
+                        border: `2px solid ${party.cleared ? "#C8F24C" : "#3A434E"}`
+                      }}>{party.cleared ? "✓" : ""}</span>
+                      <div style={{ flex: "0 0 auto", minWidth: 170 }}>
+                        <div style={{ fontFamily: mono, fontSize: 10, color: "#FF4B57", letterSpacing: ".1em" }}>PARTY {String(party.partyNum).padStart(2, "0")}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, textDecoration: party.cleared ? "line-through" : "none", color: party.cleared ? "#8B949E" : "#E8EAEC" }}>{raidDiff(RAID_LIST.find(r => r.id === party.originalRaidId))}{party.raidName.match(/ #\d+$/)?.[0] || ""}</div>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0, display: "flex", flexWrap: "wrap", gap: 5 }}>
+                        {members.map((m, i) => (
+                          <span key={i} title={`${m.owner} · ${m.className}`} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#C6CDD4", background: "#14181D", border: "1px solid #2C333C", borderRadius: 999, padding: "3px 9px 3px 7px", whiteSpace: "nowrap" }}>
+                            <RoleIcon sup={HYBRID_CLASSES.includes(m.className) && m.role === "서포터"} size={10} />
+                            {m.charName}
+                          </span>
+                        ))}
+                      </div>
+                      <span style={{ flex: "none", fontSize: 11, fontWeight: 700, color: party.cleared ? "#C8F24C" : "#6B737C", whiteSpace: "nowrap" }}>{party.cleared ? "클리어 완료" : "진행 전"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   const generateBtn = (style) => (
     <button onClick={generateParties} style={style}>⚡ 최적 파티 자동 조합</button>
   );
@@ -1026,6 +1156,7 @@ export default function Home() {
                 ["02", "세부 설정 및 직업 전환", <>캐릭터 카드의 <b>⚙ 클리어 체크</b>를 누르면 해당 캐릭터가 갈 수 있는 레이드를 직접 커스텀할 수 있습니다. 바드·홀리나이트·도화가·발키리 같은 하이브리드 직업은 <b>딜러/서포터 배지</b>를 눌러 역할을 전환할 수 있습니다.</>],
                 ["03", "최적 파티 자동 조합", <>모든 원정대를 등록한 뒤 <b>[최적 파티 자동 조합]</b>을 누르면, 레벨 조건과 직업군(서포터 밸런스, 원정대 중복 방지)을 고려하여 가장 효율적인 파티를 자동으로 구성해 줍니다.</>],
                 ["04", "보기 방식 및 수동 편집", <>파티 편성 탭에서 <b>카드 보기</b>와 <b>표 요약</b>을 전환할 수 있고, <b>수동 편집</b>을 켜면 캐릭터를 눌러 다른 캐릭터나 빈 자리와 교체할 수 있습니다.</>],
+                ["05", "클리어 체크", <><b>클리어 현황 → 파티별 클리어</b>에서 다녀온 파티를 눌러 클리어로 표시하고, <b>캐릭터별 현황</b>에서 캐릭터마다 남은 레이드를 확인하세요.</>],
               ].map(([n, title, body]) => (
                 <div key={n} style={{ display: "flex", gap: 14, background: "#1B2027", border: "1px solid #262C34", borderRadius: 12, padding: "12px 14px" }}>
                   <div style={{ fontFamily: mono, fontSize: 12, color: "#C8F24C", flex: "none", paddingTop: 1 }}>{n}</div>
@@ -1124,10 +1255,25 @@ export default function Home() {
           </button>
           <div data-scrollx="1" className="navRow" style={{ display: "flex", alignItems: "center", gap: 6, flex: "1 1 320px", minWidth: 0, paddingBottom: 2 }}>
             {NAV.map(([k, label]) => (
-              <button key={k} onClick={() => setScreen(k)} style={pill(screen === k)}>
+              <button key={k} onClick={() => setScreen(k)} style={{ ...pill(screen === k), display: "inline-flex", alignItems: "center", gap: 7 }}>
                 {label}
-                {k === "roster" && memberList.length > 0 ? ` ${memberList.length}` : ""}
-                {k === "parties" && formedParties.length > 0 ? ` ${formedParties.length}` : ""}
+                {(() => {
+                  const n = k === "roster" ? memberList.length : k === "parties" ? formedParties.length : 0;
+                  if (!n) return null;
+                  const on = screen === k;
+                  return (
+                    <span
+                      title={k === "roster" ? `등록된 원정대 ${n}개` : `편성된 파티 ${n}개`}
+                      style={{
+                        minWidth: 18, height: 18, padding: "0 5px", borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        fontFamily: mono, fontSize: 10, fontWeight: 700, lineHeight: 1,
+                        background: on ? "rgba(11,13,16,.85)" : "rgba(255,255,255,.1)", color: on ? "#FF4B57" : "#C6CDD4"
+                      }}
+                    >
+                      {n}
+                    </span>
+                  );
+                })()}
               </button>
             ))}
           </div>
@@ -1235,60 +1381,86 @@ export default function Home() {
                     아직 등록된 원정대가 없습니다. 위 입력창에 대표 캐릭터명을 넣어 시작하세요.
                   </div>
                 ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(360px,1fr))", gap: 14 }}>
-                    {memberList.map((m, idx) => {
-                      const active = m.characters.filter(c => !c.isExcluded).length;
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    {rosterGroups.map((g, gi) => {
+                      const st = charStats(g.accounts.flatMap(a => a.characters));
                       return (
-                        <div key={idx} style={{ ...card, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", border: `1px solid ${m.mainAccount ? "rgba(180,120,255,.35)" : "#2C333C"}`, animation: fadeUp, animationDelay: `${idx * 50}ms` }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "14px 14px 12px", background: "linear-gradient(180deg,#1B2027 0%,#14181D 100%)", borderBottom: "1px solid #262C34" }}>
-                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                                <span style={{ width: 9, height: 9, borderRadius: "50%", background: m.mainAccount ? SUB_COLOR : "#C8F24C", flex: "none" }} />
-                                <span style={{ fontFamily: "'Archivo'", fontWeight: 700, fontSize: 18, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.owner}</span>
+                        <div key={g.key} style={{ ...card, padding: 0, overflow: "hidden", border: `1px solid ${g.accounts.length > 1 ? "rgba(180,120,255,.35)" : "#2C333C"}`, animation: fadeUp, animationDelay: `${gi * 50}ms` }}>
+                          {/* 사람(본계정+부계정) 단위 헤더 */}
+                          <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", padding: "16px 18px", background: "linear-gradient(90deg,#1E242C 0%,#14181D 100%)", borderBottom: "1px solid #262C34" }}>
+                            <div style={{ minWidth: 0, flex: "1 1 220px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+                                <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#C8F24C", flex: "none" }} />
+                                <span style={{ fontFamily: "'Archivo'", fontWeight: 800, fontSize: 22, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.main.owner}</span>
                               </div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-                                <span style={{ fontFamily: mono, fontSize: 11, color: "#8B949E" }}>{active}/{m.characters.length} 캐릭터 참여</span>
-                                {m.mainAccount && (
-                                  <span style={{ fontSize: 10, color: SUB_COLOR, background: "rgba(180,120,255,.12)", border: "1px solid rgba(180,120,255,.35)", borderRadius: 999, padding: "2px 8px" }}>🔗 {m.mainAccount} 부계정</span>
-                                )}
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", gap: 6, flex: "none" }}>
-                              <button onClick={() => handleRefreshMember(m.owner)} disabled={loading} title="원정대 정보 갱신" style={{ ...btnSmall, opacity: loading ? .6 : 1 }}>↻ 갱신</button>
-                              <button onClick={() => handleRemoveMember(m.owner)} title="원정대 삭제" style={{ ...btnSmall, background: "transparent", color: "#6B737C" }}>삭제 ×</button>
-                            </div>
-                          </div>
-
-                          {memberList.length > 1 && (
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <span style={{ fontSize: 11, color: "#8B949E", flex: "none" }}>부계정 연결</span>
-                              <select
-                                value={m.mainAccount || ""}
-                                onChange={(e) => handleSetMainAccount(m.owner, e.target.value)}
-                                title="이 원정대를 다른 원정대의 부계정으로 지정하면, 자동 조합 시 같은 레이드 파티에 함께 편성되지 않습니다."
-                                style={{ ...selectStyle, flex: 1, minWidth: 0, fontSize: 11, padding: "6px 8px", borderRadius: 8 }}
-                              >
-                                <option value="">없음 (본계정)</option>
-                                {memberList.filter(o => o.owner !== m.owner).map((o, i) => (
-                                  <option key={i} value={o.owner}>{o.owner} 의 부계정</option>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                                <span style={{ fontSize: 11, color: "#8B949E" }}>{g.accounts.length > 1 ? `원정대 ${g.accounts.length}개 통합` : "원정대 1개"}</span>
+                                {g.accounts.filter(a => a !== g.main).map(a => (
+                                  <span key={a.owner} style={{ fontSize: 10, color: SUB_COLOR, background: "rgba(180,120,255,.12)", border: "1px solid rgba(180,120,255,.35)", borderRadius: 999, padding: "2px 8px" }}>🔗 {a.owner}</span>
                                 ))}
-                              </select>
+                              </div>
                             </div>
-                          )}
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              {[
+                                ["캐릭터", `${st.active}/${st.count}`, "#E8EAEC"],
+                                ["평균 레벨", st.avgLevel, "#C8F24C"],
+                                ["평균 전투력", st.avgCP, "#E8EAEC"],
+                                ["최고 레벨", st.maxLevel, "#E8EAEC"],
+                              ].map(([label, value, color]) => (
+                                <div key={label} style={{ minWidth: 92, background: "rgba(11,13,16,.55)", border: "1px solid #2C333C", borderRadius: 12, padding: "8px 12px" }}>
+                                  <div style={{ fontSize: 10, color: "#8B949E" }}>{label}</div>
+                                  <div style={{ fontFamily: mono, fontSize: 15, fontWeight: 600, color, marginTop: 2 }}>{value}</div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
 
-                          <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12 }}>
-                            {m.characters.map((c, cIdx) => (
-                              <div key={cIdx}>{renderManageCard(c, m.owner)}</div>
-                            ))}
-                          </div>
+                          {/* 원정대(계정)별 캐릭터를 가로로 나열 */}
+                          {g.accounts.map(a => {
+                            const ast = charStats(a.characters);
+                            const isMain = a === g.main;
+                            return (
+                              <div key={a.owner} style={{ padding: "12px 18px 16px", borderTop: isMain ? "none" : "1px dashed #2C333C" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                                  <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "2px 8px", ...(isMain
+                                    ? { color: "#C8F24C", background: "rgba(200,242,76,.1)", border: "1px solid rgba(200,242,76,.3)" }
+                                    : { color: SUB_COLOR, background: "rgba(180,120,255,.12)", border: "1px solid rgba(180,120,255,.35)" }) }}>{isMain ? "본계정" : "부계정"}</span>
+                                  <span style={{ fontSize: 14, fontWeight: 700 }}>{a.owner} 원정대</span>
+                                  {g.accounts.length > 1 && (
+                                    <span style={{ fontFamily: mono, fontSize: 11, color: "#8B949E" }}>
+                                      {ast.count}캐릭 · 평균 Lv <span style={{ color: "#C8F24C" }}>{ast.avgLevel}</span> · 평균 CP {ast.avgCP}
+                                    </span>
+                                  )}
+                                  <div style={{ flex: 1 }} />
+                                  {memberList.length > 1 && (
+                                    <select
+                                      value={a.mainAccount || ""}
+                                      onChange={(e) => handleSetMainAccount(a.owner, e.target.value)}
+                                      title="이 원정대를 다른 원정대의 부계정으로 지정하면 한 사람으로 묶이고, 자동 조합 시 같은 레이드 파티에 함께 편성되지 않습니다."
+                                      style={{ ...selectStyle, fontSize: 11, padding: "6px 8px", borderRadius: 8, maxWidth: 200 }}
+                                    >
+                                      <option value="">본계정 (연결 없음)</option>
+                                      {memberList.filter(o => o.owner !== a.owner).map((o, i) => (
+                                        <option key={i} value={o.owner}>{o.owner} 의 부계정</option>
+                                      ))}
+                                    </select>
+                                  )}
+                                  <button onClick={() => handleRefreshMember(a.owner)} disabled={loading} title="원정대 정보 갱신" style={{ ...btnSmall, opacity: loading ? .6 : 1 }}>↻ 갱신</button>
+                                  <button onClick={() => handleRemoveMember(a.owner)} title="원정대 삭제" style={{ ...btnSmall, background: "transparent", color: "#6B737C" }}>삭제 ×</button>
+                                </div>
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(270px,1fr))", gap: 10 }}>
+                                  {a.characters.map((c, cIdx) => (
+                                    <div key={cIdx}>{renderManageCard(c, a.owner)}</div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       );
                     })}
                   </div>
                 )}
-
                 {memberList.length > 0 && (
                   <button onClick={() => { generateParties(); setScreen("parties"); }} style={{ ...btnPrimary, width: "100%", padding: 13 }}>⚡ 등록한 원정대로 최적 파티 자동 조합</button>
                 )}
@@ -1323,8 +1495,15 @@ export default function Home() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, animation: fadeUp }}>
                   <div>
                     <div style={h1}>클리어 현황</div>
-                    <div style={sub}>캐릭터별로 이번 주 각 레이드를 클리어했는지 한눈에 확인합니다. 칸을 누르면 바로 클리어 체크/해제되고, 체크된 레이드는 자동 조합에서 빠집니다.</div>
+                    <div style={sub}>파티별 클리어 탭에서 다녀온 파티를 체크하고, 캐릭터별 현황에서 각 캐릭터가 이번 주 어떤 레이드를 남겨두고 있는지 확인하세요.</div>
                   </div>
+
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button onClick={() => setClearTab("party")} style={pill(clearTab === "party", "#C8F24C")}>파티별 클리어</button>
+                    <button onClick={() => setClearTab("char")} style={pill(clearTab === "char", "#C8F24C")}>캐릭터별 현황</button>
+                  </div>
+
+                  {clearTab === "party" ? renderPartyClear() : (<>
 
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
                     {catStats.map(({ cat, left, done }, i) => {
@@ -1401,17 +1580,14 @@ export default function Home() {
                                 const [main, subLabel] = cellLabel(st);
                                 const locked = st.state === "locked";
                                 return (
-                                  <button
+                                  <div
                                     key={cat}
-                                    type="button"
-                                    disabled={locked}
-                                    onClick={() => handleToggleCharRaid(m.owner, c.charName, st.state === "done" ? st.highest.id : st.raid.id)}
-                                    title={locked ? "레벨 미달" : st.state === "done" ? `클릭하면 ${st.highest.name} 매칭에 다시 참여합니다` : "클릭하면 클리어 체크(매칭 제외)됩니다"}
-                                    style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, minHeight: 46, borderRadius: 10, background: sty.bg, border: `1px solid ${sty.border}`, color: sty.color, cursor: locked ? "default" : "pointer", padding: "6px 4px" }}
+                                    title={locked ? "레벨 미달" : st.raid ? st.raid.name : CATEGORY_TITLE[cat]}
+                                    style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, minHeight: 46, borderRadius: 10, background: sty.bg, border: `1px solid ${sty.border}`, color: sty.color, padding: "6px 4px", textAlign: "center" }}
                                   >
                                     <span style={{ fontSize: 12, fontWeight: 700 }}>{main}</span>
                                     <span style={{ fontSize: 10, opacity: .8, whiteSpace: "nowrap" }}>{subLabel}</span>
-                                  </button>
+                                  </div>
                                 );
                               })}
                             </div>
@@ -1420,6 +1596,7 @@ export default function Home() {
                       </div>
                     </div>
                   ))}
+                  </>)}
                 </div>
               );
             })()}
@@ -1527,7 +1704,7 @@ export default function Home() {
                           <th style={{ padding: "8px 12px", fontWeight: 500, whiteSpace: "nowrap" }}>레이드</th>
                           <th style={{ padding: "8px 12px", fontWeight: 500 }}>참여 캐릭터</th>
                           <th style={{ padding: "8px 12px", fontWeight: 500, textAlign: "right", whiteSpace: "nowrap" }}>총 전투력 / 평균</th>
-                          <th style={{ padding: "8px 12px", fontWeight: 500, textAlign: "center", width: 96 }}>관리</th>
+                          <th style={{ padding: "8px 12px", fontWeight: 500, textAlign: "center", width: 96 }}>클리어</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1558,7 +1735,7 @@ export default function Home() {
                                   >
                                     {CLASS_ICONS[m.className] && <img src={CLASS_ICONS[m.className]} alt={m.className} style={{ width: 12, height: 12, opacity: .85 }} />}
                                     {m.charName}
-                                    {HYBRID_CLASSES.includes(m.className) && m.role === "서포터" && <span style={{ fontSize: 9, color: SUP_COLOR, fontWeight: 700 }}>SUP</span>}
+                                    <RoleIcon sup={HYBRID_CLASSES.includes(m.className) && m.role === "서포터"} size={10} />
                                   </span>
                                 );
                               })}
@@ -1582,8 +1759,8 @@ export default function Home() {
                               <td style={{ ...td, color: "#C6CDD4" }}>
                                 {party.type === 8 && !isSingle ? (
                                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                    <div><span style={{ fontFamily: mono, color: DLR_COLOR, marginRight: 8, verticalAlign: "middle" }}>1파티</span>{names(party.g1 || [], "g1", 4)}</div>
-                                    <div><span style={{ fontFamily: mono, color: SUP_COLOR, marginRight: 8, verticalAlign: "middle" }}>2파티</span>{names(party.g2 || [], "g2", 4)}</div>
+                                    <div><span style={{ fontFamily: mono, color: G1_COLOR, marginRight: 8, verticalAlign: "middle" }}>1파티</span>{names(party.g1 || [], "g1", 4)}</div>
+                                    <div><span style={{ fontFamily: mono, color: G2_COLOR, marginRight: 8, verticalAlign: "middle" }}>2파티</span>{names(party.g2 || [], "g2", 4)}</div>
                                   </div>
                                 ) : (
                                   <div>{names(party.members || [], "members", isSingle ? 0 : party.type)}</div>
@@ -1595,17 +1772,9 @@ export default function Home() {
                                 ) : <span style={{ color: "#6B737C" }}>—</span>}
                               </td>
                               <td style={{ ...td, borderRight: "1px solid #262C34", borderRadius: "0 12px 12px 0", textAlign: "center" }}>
-                                {!isSingle && (
-                                  <button
-                                    onClick={() => handlePartyClear(party)}
-                                    title="클리어 표시 토글 (매칭에는 영향 없음)"
-                                    style={party.cleared
-                                      ? { ...btnSmall, background: "transparent", color: "#8B949E" }
-                                      : { ...btnSmall, background: "rgba(200,242,76,.12)", color: "#C8F24C", border: "1px solid rgba(200,242,76,.4)" }}
-                                  >
-                                    {party.cleared ? "↩ 취소" : "✓ 클리어"}
-                                  </button>
-                                )}
+                                {!isSingle && (party.cleared
+                                  ? <span style={{ fontSize: 11, fontWeight: 700, color: "#0B0D10", background: "#C8F24C", borderRadius: 999, padding: "3px 9px", whiteSpace: "nowrap" }}>✓ 클리어</span>
+                                  : <span style={{ fontSize: 11, color: "#6B737C", whiteSpace: "nowrap" }}>진행 전</span>)}
                               </td>
                             </tr>
                           );
@@ -1666,15 +1835,6 @@ export default function Home() {
                                     <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 600, color: "#C8F24C" }}>{avgCP.toLocaleString()}</div>
                                   </div>
                                 </div>
-                                <button
-                                  onClick={() => handlePartyClear(party)}
-                                  title="클리어 표시만 토글합니다. 파티 편성/매칭에는 영향을 주지 않습니다."
-                                  style={party.cleared
-                                    ? { ...btnGhost, padding: "11px 14px", fontSize: 12 }
-                                    : { background: "#C8F24C", color: "#0B0D10", border: "none", borderRadius: 12, padding: "11px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
-                                >
-                                  {party.cleared ? "↩ 클리어 취소" : "✓ 클리어 표시"}
-                                </button>
                               </div>
                             )}
                           </div>
@@ -1682,8 +1842,8 @@ export default function Home() {
                           <div style={{ position: "relative", padding: "0 20px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
                             {party.type === 8 && !isSingle ? (
                               <>
-                                {renderGroup(party, "g1", "1파티", DLR_COLOR)}
-                                {renderGroup(party, "g2", "2파티", SUP_COLOR)}
+                                {renderGroup(party, "g1", "1파티", G1_COLOR)}
+                                {renderGroup(party, "g2", "2파티", G2_COLOR)}
                               </>
                             ) : (
                               <div style={slotGrid}>

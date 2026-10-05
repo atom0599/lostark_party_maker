@@ -158,6 +158,34 @@ export default function Home() {
   const [swapTarget, setSwapTarget] = useState(null);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
+  // 변경 기록에 남길 동작 이름 (다음 서버 저장 때 함께 전송)
+  const logAction = (label) => { pendingActions.current = [...pendingActions.current, label].slice(-10); };
+  // 변경 기록에 표시될 내 이름 (브라우저마다 저장)
+  const [actorName, setActorName] = useState("");
+  const [nameOpen, setNameOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  useEffect(() => {
+    let name = "", dev = "";
+    try {
+      name = localStorage.getItem("loa_actor") || "";
+      dev = localStorage.getItem("loa_device") || "";
+      if (!dev) { dev = Math.random().toString(36).slice(2, 6); localStorage.setItem("loa_device", dev); }
+    } catch {}
+    setActorName(name);
+    actorRef.current = name || `이름 없음 #${dev}`;
+  }, []);
+  const saveActorName = () => {
+    const name = nameDraft.trim().slice(0, 20);
+    setActorName(name);
+    let dev = "";
+    try {
+      if (name) localStorage.setItem("loa_actor", name); else localStorage.removeItem("loa_actor");
+      dev = localStorage.getItem("loa_device") || "";
+    } catch {}
+    actorRef.current = name || `이름 없음 #${dev}`;
+    setNameOpen(false);
+  };
+
   // 레이드 목록 (레이드 관리 탭에서 수정, 서버 공유). 아래 로직은 모두 이 목록을 기준으로 동작한다.
   const [raidList, setRaidList] = useState(DEFAULT_RAIDS);
   const RAID_LIST = raidList;
@@ -171,7 +199,6 @@ export default function Home() {
     let raids = DEFAULT_RAIDS;
     try {
       const savedRaids = JSON.parse(localStorage.getItem("loa_raids") || "null");
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (validRaids(savedRaids)) { raids = savedRaids; setRaidList(savedRaids); }
     } catch {}
     if (savedMembers) {
@@ -282,54 +309,61 @@ export default function Home() {
     saveToLocalStorage(memberList.filter(m => m.owner !== ownerName), []);
   };
 
+  // API 로 받아온 원정대 정보(data)를 원정대 목록과 이미 편성된 파티에 반영한 결과를 돌려준다
+  const applyRefreshData = (members, parties, ownerName, data) => {
+    const categories = [...new Set(RAID_LIST.map(r => r.category))];
+    const updatedMembers = members.map(m => {
+      if (m.owner === ownerName) {
+        const newChars = data.map(char => {
+          const existingChar = m.characters.find(c => c.charName === char.CharacterName);
+          const defaultAllowed = categories.map(cat => {
+            const raidsInCat = RAID_LIST.filter(r => r.category === cat && char.ItemLevel >= r.minLevel);
+            if (raidsInCat.length === 0) return null;
+            const highest = raidsInCat.reduce((max, r) => r.minLevel > max.minLevel ? r : max, raidsInCat[0]);
+            return highest.id;
+          }).filter(Boolean);
+
+          return {
+            charName: char.CharacterName,
+            className: char.CharacterClassName,
+            level: char.ItemLevel,
+            combatPower: char.CombatPower,
+            characterImage: char.CharacterImage,
+            role: existingChar ? existingChar.role : (["바드", "홀리나이트", "도화가", "발키리"].includes(char.CharacterClassName) ? "서포터" : "딜러"),
+            isExcluded: existingChar ? existingChar.isExcluded : false,
+            allowedRaids: existingChar ? existingChar.allowedRaids : defaultAllowed
+          };
+        });
+        return { ...m, characters: newChars };
+      }
+      return m;
+    });
+
+    // 갱신된 레벨·전투력·초상화를 이미 편성된 파티에도 바로 반영
+    const fresh = new Map(data.map(char => [char.CharacterName, char]));
+    const refreshChar = (c) => {
+      if (c.owner !== ownerName || !fresh.has(c.charName)) return c;
+      const f = fresh.get(c.charName);
+      return { ...c, level: f.ItemLevel, combatPower: f.CombatPower, characterImage: f.CharacterImage || c.characterImage };
+    };
+    const updatedParties = parties.map(p => ({
+      ...p,
+      members: (p.members || []).map(refreshChar),
+      g1: (p.g1 || []).map(refreshChar),
+      g2: (p.g2 || []).map(refreshChar),
+    }));
+    return { members: updatedMembers, parties: updatedParties };
+  };
+
   const handleRefreshMember = async (ownerName) => {
     setLoading(true);
     try {
       const res = await fetch(`/api/character?name=${encodeURIComponent(ownerName)}`);
       const data = await res.json();
       if (res.ok && Array.isArray(data)) {
-        const categories = [...new Set(RAID_LIST.map(r => r.category))];
-        const updatedMembers = memberList.map(m => {
-          if (m.owner === ownerName) {
-            const newChars = data.map(char => {
-              const existingChar = m.characters.find(c => c.charName === char.CharacterName);
-              const defaultAllowed = categories.map(cat => {
-                const raidsInCat = RAID_LIST.filter(r => r.category === cat && char.ItemLevel >= r.minLevel);
-                if (raidsInCat.length === 0) return null;
-                const highest = raidsInCat.reduce((max, r) => r.minLevel > max.minLevel ? r : max, raidsInCat[0]);
-                return highest.id;
-              }).filter(Boolean);
-
-              return {
-                charName: char.CharacterName,
-                className: char.CharacterClassName,
-                level: char.ItemLevel,
-                combatPower: char.CombatPower,
-                characterImage: char.CharacterImage,
-                role: existingChar ? existingChar.role : (["바드", "홀리나이트", "도화가", "발키리"].includes(char.CharacterClassName) ? "서포터" : "딜러"),
-                isExcluded: existingChar ? existingChar.isExcluded : false,
-                allowedRaids: existingChar ? existingChar.allowedRaids : defaultAllowed
-              };
-            });
-            return { ...m, characters: newChars };
-          }
-          return m;
-        });
-
-        // 갱신된 레벨·전투력·초상화를 이미 편성된 파티에도 바로 반영
-        const fresh = new Map(data.map(char => [char.CharacterName, char]));
-        const refreshChar = (c) => {
-          if (c.owner !== ownerName || !fresh.has(c.charName)) return c;
-          const f = fresh.get(c.charName);
-          return { ...c, level: f.ItemLevel, combatPower: f.CombatPower, characterImage: f.CharacterImage || c.characterImage };
-        };
-        const updatedParties = partyResult.map(p => ({
-          ...p,
-          members: (p.members || []).map(refreshChar),
-          g1: (p.g1 || []).map(refreshChar),
-          g2: (p.g2 || []).map(refreshChar),
-        }));
-        saveToLocalStorage(updatedMembers, updatedParties);
+        const next = applyRefreshData(memberList, partyResult, ownerName, data);
+        logAction(`원정대 갱신: ${ownerName}`);
+        saveToLocalStorage(next.members, next.parties);
       } else {
         alert("원정대 갱신에 실패했습니다.");
       }
@@ -338,6 +372,57 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 모든 원정대를 차례로 갱신하고 한 번에 저장 (API 요청 한도를 고려해 하나씩 순서대로)
+  const [refreshAllProgress, setRefreshAllProgress] = useState(null); // { done, total }
+  const handleRefreshAll = async () => {
+    if (!memberList.length || refreshAllProgress) return;
+    setLoading(true);
+    const owners = memberList.map(m => m.owner);
+    let members = memberList, parties = partyResult;
+    const failed = [];
+    for (let k = 0; k < owners.length; k++) {
+      setRefreshAllProgress({ done: k, total: owners.length });
+      try {
+        const res = await fetch(`/api/character?name=${encodeURIComponent(owners[k])}`);
+        const data = await res.json();
+        if (res.ok && Array.isArray(data)) ({ members, parties } = applyRefreshData(members, parties, owners[k], data));
+        else failed.push(owners[k]);
+      } catch {
+        failed.push(owners[k]);
+      }
+      if (k < owners.length - 1) await new Promise(r => setTimeout(r, 400));
+    }
+    logAction(`전체 원정대 갱신 (${owners.length - failed.length}/${owners.length})`);
+    saveToLocalStorage(members, parties);
+    setRefreshAllProgress(null);
+    setLoading(false);
+    if (failed.length) alert(`다음 원정대는 갱신하지 못했습니다: ${failed.join(", ")}`);
+  };
+
+  // 1. 주간 초기화: 모든 파티의 클리어 표시를 지우고,
+  //    캐릭터별로 클리어 체크(선택 해제)해 둔 레이드를 갈 수 있는 최고 난이도로 다시 선택한다.
+  //    직접 고른 난이도와 매칭 참여/제외 설정은 그대로 둔다.
+  const handleWeeklyReset = () => {
+    if (!window.confirm("주간 초기화를 할까요?\n\n· 모든 파티의 클리어 표시가 지워집니다\n· 클리어 체크해 둔 레이드가 다시 매칭 참여로 바뀝니다\n· 파티 편성은 그대로이며, 새로 짜려면 자동 조합을 다시 눌러주세요")) return;
+    const cats = [...new Set(RAID_LIST.map(r => r.category))];
+    const members = memberList.map(m => ({
+      ...m,
+      characters: m.characters.map(c => {
+        const allowed = [...(c.allowedRaids || [])];
+        for (const cat of cats) {
+          const has = allowed.some(id => { const r = RAID_LIST.find(x => x.id === id); return r && r.category === cat; });
+          if (has) continue;
+          const ok = RAID_LIST.filter(r => r.category === cat && c.level >= r.minLevel);
+          if (ok.length) allowed.push(ok.reduce((mx, r) => (r.minLevel > mx.minLevel ? r : mx), ok[0]).id);
+        }
+        return { ...c, allowedRaids: allowed };
+      }),
+    }));
+    const parties = partyResult.map(p => (p.cleared ? { ...p, cleared: false } : p));
+    logAction("주간 초기화");
+    saveToLocalStorage(members, parties);
   };
 
   const handleToggleExclude = (ownerName, charName) => {
@@ -809,6 +894,8 @@ export default function Home() {
      다른 사람의 변경은 2초마다 받아온다. 동시에 수정하면 원정대·파티·레이드 단위로 3-way 병합. */
   const [syncStatus, setSyncStatus] = useState("connecting"); // connecting | live | local | error
   const adminTokenRef = useRef("");
+  const pendingActions = useRef([]);
+  const actorRef = useRef("");
   const sync = useRef({ ready: false, version: 0, base: null, baseSnap: "", pushing: false, timer: null });
   const latest = useRef({ members: [], parties: [], raids: DEFAULT_RAIDS });
 
@@ -851,10 +938,11 @@ export default function Home() {
       const res = await fetch("/api/state", {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...(adminTokenRef.current ? { "x-admin-token": adminTokenRef.current } : {}) },
-        body: JSON.stringify({ baseVersion: s.version, members: cur0.members, parties: cur0.parties, raids: cur0.raids }),
+        body: JSON.stringify({ baseVersion: s.version, members: cur0.members, parties: cur0.parties, raids: cur0.raids, actor: actorRef.current, actions: pendingActions.current }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
+        pendingActions.current = [];
         s.version = data.version;
         s.base = cur0;
         s.baseSnap = snap;
@@ -1522,8 +1610,77 @@ export default function Home() {
     );
   };
 
+  // 5. 파티 편성을 디스코드/카톡에 붙여넣기 좋은 글로 만든다 (지금 보이는 목록 기준)
+  const [copied, setCopied] = useState(false);
+  const partyText = (list) => {
+    const d = new Date();
+    const who = (m) => {
+      const sup = HYBRID_CLASSES.includes(m.className) && m.role === "서포터";
+      const real = realNameOf(m.owner);
+      return `${sup ? "[서폿] " : ""}${m.charName}(${m.className}${real ? `·${real}` : ""})`;
+    };
+    const lines = [`📋 로아 파티 편성 (${d.getMonth() + 1}/${d.getDate()})`, ""];
+    for (const p of list) {
+      const single = isSingleParty(p);
+      const n = (p.members || []).length;
+      if (single) {
+        lines.push(`[미편성] ${p.baseRaidName || p.raidName} — ${n}명`);
+        lines.push(`  ${(p.members || []).map(who).join(", ")}`);
+      } else {
+        const avg = n ? Math.floor((p.members || []).reduce((a, m) => a + (m.combatPower || 0), 0) / n) : 0;
+        lines.push(`[파티 ${p.partyNum}] ${p.raidName} — ${n}/${p.type}명 · 평균 ${avg.toLocaleString()}${p.cleared ? " · ✓클리어" : ""}`);
+        if (p.type === 8) {
+          lines.push(`  1파티: ${(p.g1 || []).map(who).join(", ") || "-"}`);
+          lines.push(`  2파티: ${(p.g2 || []).map(who).join(", ") || "-"}`);
+        } else {
+          lines.push(`  ${(p.members || []).map(who).join(", ")}`);
+        }
+      }
+      lines.push("");
+    }
+    return lines.join("\n").trim();
+  };
+  const copyPartyText = async () => {
+    const text = partyText(displayedParties);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } catch {}
+      ta.remove();
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+
+  // 6. 변경 기록 (관리자 전용)
+  const [logEntries, setLogEntries] = useState(null);
+  const [logError, setLogError] = useState("");
+  const loadLog = async () => {
+    try {
+      const res = await fetch("/api/log", { headers: { "x-admin-token": adminTokenRef.current }, cache: "no-store" });
+      const d = await res.json();
+      if (!res.ok) { setLogError(d.error || "기록을 불러오지 못했습니다."); return; }
+      setLogError("");
+      setLogEntries(d.entries);
+    } catch {
+      setLogError("서버와 통신하지 못했습니다.");
+    }
+  };
+  useEffect(() => {
+    if (screen !== "log" || !isAdmin) return;
+    loadLog();
+    const t = setInterval(loadLog, 10000);
+    return () => clearInterval(t);
+  }, [screen, isAdmin]);
+  useEffect(() => {
+    // 로그아웃하면 기록 화면에서 나간다
+    if (!isAdmin && screen === "log") setScreen("home");
+  }, [isAdmin, screen]);
+
   const generateBtn = (style) => (
-    <button onClick={generateParties} style={style}>⚡ 최적 파티 자동 조합</button>
+    <button onClick={() => { logAction("최적 파티 자동 조합"); generateParties(); }} style={style}>⚡ 최적 파티 자동 조합</button>
   );
 
   return (
@@ -1547,6 +1704,21 @@ export default function Home() {
         </div>
         <div style={{ position: "absolute", bottom: 28, fontFamily: mono, fontSize: 11, letterSpacing: ".16em", color: "#5A626C" }}>MADE BY 이현</div>
       </div>
+
+      {/* 내 이름 설정 */}
+      {nameOpen && (
+        <div onClick={() => setNameOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 97, background: "rgba(5,7,9,.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <form onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); saveActorName(); }} style={{ width: "min(340px,100%)", background: "#14181D", border: "1px solid #2C333C", borderRadius: 18, padding: 20, display: "flex", flexDirection: "column", gap: 12, animation: "popIn .3s cubic-bezier(.2,.7,.3,1) both" }}>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>내 이름</div>
+            <div style={{ fontSize: 12, color: "#8B949E" }}>파티를 바꾸거나 클리어를 누르면 이 이름으로 기록됩니다. 이 브라우저에만 저장됩니다.</div>
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} maxLength={20} placeholder="예: 이현" style={{ background: "#0F1318", border: "1px solid #2C333C", borderRadius: 10, padding: "11px 14px", color: "#E8EAEC", fontSize: 13 }} />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => setNameOpen(false)} style={{ background: "transparent", color: "#8B949E", border: "1px solid #2C333C", borderRadius: 10, padding: "9px 14px", fontSize: 13, cursor: "pointer" }}>취소</button>
+              <button type="submit" style={{ background: "#C8F24C", color: "#0B0D10", border: "none", borderRadius: 10, padding: "9px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>저장</button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* admin login */}
       {adminOpen && (
@@ -1577,14 +1749,14 @@ export default function Home() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "60vh", overflowY: "auto" }}>
               {[
-                ["01", "원정대 등록", <><b>원정대</b> 탭에서 공대원의 대표 캐릭터명(필요하면 실명도)을 입력하고 <b>[원정대 등록]</b>을 누르세요. 1700 이상 캐릭터의 레벨·전투력·초상화를 자동으로 불러옵니다. <b>↻ 갱신</b>으로 최신 정보로 다시 불러올 수 있습니다.</>],
+                ["01", "원정대 등록", <><b>원정대</b> 탭에서 공대원의 대표 캐릭터명(필요하면 실명도)을 입력하고 <b>[원정대 등록]</b>을 누르세요. 1700 이상 캐릭터의 레벨·전투력·초상화를 자동으로 불러옵니다. <b>↻ 갱신</b>(원정대별) 또는 <b>↻ 전체 원정대 갱신</b>으로 최신 정보를 다시 불러올 수 있습니다.</>],
                 ["02", "부계정 연결", <>원정대 이름 옆의 선택창에서 <b>OO 의 부계정</b>을 고르면 본계정과 한 사람으로 묶여 함께 표시되고, 자동 조합 때 같은 파티에 함께 들어가지 않습니다.</>],
                 ["03", "캐릭터 설정", <>캐릭터마다 <b>매칭 참여중 / 제외됨</b>을 눌러 이번 주 파티에서 뺄 수 있고, <b>⚙ 레이드 설정</b>에서 갈 난이도를 고르거나 이미 다녀온 레이드를 체크 해제할 수 있습니다. 바드·홀리나이트·도화가·발키리는 <b>딜러/서포터 배지</b>를 눌러 역할을 바꿀 수 있습니다.</>],
                 ["04", "최적 파티 자동 조합", <><b>파티 편성</b> 탭의 <b>[최적 파티 자동 조합]</b>을 누르면 레벨 조건, 서포터 수, 직업·원정대(부계정 포함) 중복을 고려해 앞 파티부터 꽉 채워 편성합니다. 자리가 없는 캐릭터는 <b>싱글 / 미편성</b>으로 아래에 모입니다.</>],
-                ["05", "보기 방식과 수동 편집", <><b>카드 보기 / 표 요약</b>을 전환하고, 레이드별·공대원별로 걸러 볼 수 있습니다. <b>파티 수동 편집</b>을 켜면 캐릭터를 눌러 선택한 뒤 다른 캐릭터나 빈 자리를 눌러 바꿀 수 있습니다 (표 요약에서도 가능).</>],
-                ["06", "클리어 체크", <><b>클리어 현황 → 파티별 클리어</b>에서 다녀온 파티를 눌러 클리어로 표시하세요. <b>캐릭터별 현황</b>에서는 캐릭터마다 레이드별로 남음 / 편성 / 클리어 상태를 한눈에 볼 수 있습니다.</>],
+                ["05", "보기 방식과 수동 편집", <><b>카드 보기 / 표 요약</b>을 전환하고, 레이드별·공대원별로 걸러 볼 수 있습니다. <b>파티 수동 편집</b>을 켜면 캐릭터를 눌러 선택한 뒤 다른 캐릭터나 빈 자리를 눌러 바꿀 수 있습니다 (표 요약에서도 가능). <b>📋 텍스트 복사</b>를 누르면 지금 보이는 파티 목록을 디스코드·카톡에 붙여넣기 좋은 글로 복사합니다.</>],
+                ["06", "클리어 체크", <><b>클리어 현황 → 파티별 클리어</b>에서 다녀온 파티를 눌러 클리어로 표시하세요. <b>캐릭터별 현황</b>에서는 캐릭터마다 레이드별로 남음 / 편성 / 클리어 상태를 한눈에 볼 수 있습니다. 수요일 리셋 후에는 <b>↺ 주간 초기화</b>로 클리어 표시와 클리어 체크를 한 번에 되돌리세요.</>],
                 ["07", "레이드 관리", <><b>레이드 관리</b> 탭에서 새 레이드나 난이도를 추가하고, 이름·인원(4인/8인)·입장 레벨·배경 이미지를 바꿀 수 있습니다. 배경은 <b>📁 내 PC</b>로 내 컴퓨터 이미지를 올릴 수도 있습니다. 새 레이드는 입장 레벨이 되는 캐릭터에게 자동으로 선택되며, 다음 자동 조합부터 반영됩니다. 레이드·난이도 삭제와 목록 초기화는 상단 <b>관리자</b> 로그인 후에만 할 수 있습니다.</>],
-                ["08", "모두 함께 보기", <>원정대 등록, 파티 편성, 클리어 체크는 서버에 저장되어 사이트에 접속한 모든 사람에게 몇 초 안에 똑같이 보입니다. 상단 오른쪽 점이 초록색이면 정상적으로 공유 중입니다.</>],
+                ["08", "모두 함께 보기", <>원정대 등록, 파티 편성, 클리어 체크는 서버에 저장되어 사이트에 접속한 모든 사람에게 몇 초 안에 똑같이 보입니다. 상단 오른쪽 점이 초록색이면 정상적으로 공유 중입니다. <b>👤</b> 버튼으로 내 이름을 정해두면, 관리자가 보는 <b>변경 기록</b>에 그 이름으로 남습니다.</>],
               ].map(([n, title, body]) => (
                 <div key={n} style={{ display: "flex", gap: 14, background: "#1B2027", border: "1px solid #262C34", borderRadius: 12, padding: "12px 14px" }}>
                   <div style={{ fontFamily: mono, fontSize: 12, color: "#C8F24C", flex: "none", paddingTop: 1 }}>{n}</div>
@@ -1682,7 +1854,7 @@ export default function Home() {
             <span className="brandLabel" style={{ fontFamily: "'Archivo'", fontWeight: 800, fontSize: 14, letterSpacing: ".02em" }}>LOA PARTY</span>
           </button>
           <div data-scrollx="1" className="navRow" style={{ display: "flex", alignItems: "center", gap: 6, flex: "1 1 320px", minWidth: 0, paddingBottom: 2 }}>
-            {NAV.map(([k, label]) => (
+            {(isAdmin ? [...NAV, ["log", "변경 기록"]] : NAV).map(([k, label]) => (
               <button key={k} onClick={() => setScreen(k)} style={{ ...pill(screen === k), display: "inline-flex", alignItems: "center", gap: 7 }}>
                 {label}
                 {(() => {
@@ -1731,6 +1903,15 @@ export default function Home() {
                 </div>
               );
             })()}
+            <button
+              className="nameBtn"
+              onClick={() => { setNameDraft(actorName); setNameOpen(true); }}
+              title="변경 기록에 남을 내 이름"
+              style={{ background: "transparent", color: actorName ? "#C6CDD4" : "#8B949E", border: "1px solid rgba(255,255,255,.14)", borderRadius: 999, padding: "7px 13px", fontSize: 12, cursor: "pointer", whiteSpace: "nowrap", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis" }}
+            >
+              <span className="btnIcon">👤</span>
+              <span className="btnLabel">👤 {actorName || "이름 설정"}</span>
+            </button>
             <button
               className="adminBtn"
               onClick={() => { if (isAdmin) adminLogout(); else { setAdminErr(""); setAdminOpen(true); } }}
@@ -1808,8 +1989,15 @@ export default function Home() {
                     <div style={h1}>원정대 관리</div>
                     <div style={sub}>공대원 대표 캐릭터명을 등록하면 1700 이상 캐릭터의 레벨·전투력을 불러옵니다. 캐릭터마다 매칭 참여/제외를 정하고, ⚙ 레이드 설정으로 갈 레이드와 이미 클리어한 레이드를 체크하세요.</div>
                   </div>
-                  <div style={{ fontFamily: mono, fontSize: 12, color: "#8B949E" }}>
-                    원정대 <span style={{ color: "#C8F24C" }}>{memberList.length}</span> · 캐릭터 <span style={{ color: "#E8EAEC" }}>{activeChars}</span>/{totalChars}
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ fontFamily: mono, fontSize: 12, color: "#8B949E" }}>
+                      원정대 <span style={{ color: "#C8F24C" }}>{memberList.length}</span> · 캐릭터 <span style={{ color: "#E8EAEC" }}>{activeChars}</span>/{totalChars}
+                    </div>
+                    {memberList.length > 0 && (
+                      <button onClick={handleRefreshAll} disabled={loading} title="모든 원정대의 레벨·전투력·캐릭터를 다시 불러옵니다" style={{ ...btnGhost, padding: "9px 14px", fontSize: 12, opacity: loading ? .7 : 1 }}>
+                        {refreshAllProgress ? `갱신 중… ${refreshAllProgress.done + 1}/${refreshAllProgress.total}` : "↻ 전체 원정대 갱신"}
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1929,7 +2117,7 @@ export default function Home() {
                   </div>
                 )}
                 {memberList.length > 0 && (
-                  <button onClick={() => { generateParties(); setScreen("parties"); }} style={{ ...btnPrimary, width: "100%", padding: 13 }}>⚡ 등록한 원정대로 최적 파티 자동 조합</button>
+                  <button onClick={() => { logAction("최적 파티 자동 조합"); generateParties(); setScreen("parties"); }} style={{ ...btnPrimary, width: "100%", padding: 13 }}>⚡ 등록한 원정대로 최적 파티 자동 조합</button>
                 )}
               </div>
             )}
@@ -1968,6 +2156,14 @@ export default function Home() {
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button onClick={() => setClearTab("party")} style={pill(clearTab === "party", "#C8F24C")}>파티별 클리어</button>
                     <button onClick={() => setClearTab("char")} style={pill(clearTab === "char", "#C8F24C")}>캐릭터별 현황</button>
+                    <div style={{ flex: 1 }} />
+                    <button
+                      onClick={handleWeeklyReset}
+                      title="수요일 리셋: 파티 클리어 표시와 캐릭터 클리어 체크를 모두 되돌립니다"
+                      style={{ ...btnGhost, padding: "9px 14px", fontSize: 12, color: "#E5C04C", border: "1px solid rgba(229,192,76,.4)", background: "rgba(229,192,76,.08)" }}
+                    >
+                      ↺ 주간 초기화
+                    </button>
                   </div>
 
                   {clearTab === "party" ? renderPartyClear() : (<>
@@ -2068,6 +2264,52 @@ export default function Home() {
                 </div>
               );
             })()}
+
+            {/* LOG (변경 기록, 관리자 전용) */}
+            {screen === "log" && isAdmin && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14, animation: fadeUp }}>
+                <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={h1}>변경 기록</div>
+                    <div style={sub}>누가 언제 무엇을 바꿨는지 최근 400건까지 보관합니다. 관리자만 볼 수 있으며, 이름은 각자 상단 👤 버튼에서 정한 이름입니다.</div>
+                  </div>
+                  <button onClick={loadLog} style={{ ...btnGhost, padding: "9px 14px", fontSize: 12 }}>↻ 새로고침</button>
+                </div>
+                {logError && <div style={{ ...card, color: "#E1424F", fontSize: 13 }}>{logError}</div>}
+                {!logEntries ? (
+                  <div style={{ ...card, color: "#8B949E", fontSize: 13 }}>불러오는 중…</div>
+                ) : logEntries.length === 0 ? (
+                  <div style={{ ...card, color: "#8B949E", fontSize: 13, textAlign: "center", padding: "34px 18px" }}>아직 기록이 없습니다.</div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {logEntries.map((e, i) => {
+                      const d = new Date(e.at);
+                      const when = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+                      return (
+                        <div key={`${e.at}-${i}`} style={{ ...card, padding: "12px 16px", display: "grid", gridTemplateColumns: "120px minmax(0,1fr)", gap: 14 }} className="logRow">
+                          <div>
+                            <div style={{ fontFamily: mono, fontSize: 12, color: "#C6CDD4" }}>{when}</div>
+                            <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4, wordBreak: "break-all" }}>{e.actor}</div>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
+                            {!!(e.actions && e.actions.length) && (
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                                {e.actions.map((a, k) => (
+                                  <span key={k} style={{ fontSize: 11, fontWeight: 700, color: "#C8F24C", background: "rgba(200,242,76,.1)", border: "1px solid rgba(200,242,76,.3)", borderRadius: 999, padding: "2px 9px" }}>{a}</span>
+                                ))}
+                              </div>
+                            )}
+                            {(e.changes || []).map((c, k) => (
+                              <div key={k} style={{ fontSize: 12, color: "#C6CDD4", lineHeight: 1.5, wordBreak: "break-all" }}>· {c}</div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* RAIDS (레이드 관리) */}
             {screen === "raids" && (() => {
@@ -2292,6 +2534,14 @@ export default function Home() {
                     style={{ ...btnGhost, padding: "10px 16px", ...(isEditMode ? { background: "rgba(200,242,76,.14)", color: "#C8F24C", border: "1px solid rgba(200,242,76,.45)" } : {}) }}
                   >
                     ✎ {isEditMode ? "수동 편집 종료" : "파티 수동 편집"}
+                  </button>
+                  <button
+                    onClick={copyPartyText}
+                    disabled={!displayedParties.length}
+                    title="지금 보이는 파티 목록을 디스코드/카톡에 붙여넣기 좋은 글로 복사"
+                    style={{ ...btnGhost, padding: "10px 16px", opacity: displayedParties.length ? 1 : .5, ...(copied ? { color: "#C8F24C", border: "1px solid rgba(200,242,76,.45)" } : {}) }}
+                  >
+                    {copied ? "✓ 복사됨" : "📋 텍스트 복사"}
                   </button>
                   <div style={{ flex: 1 }} />
                   {generateBtn(btnPrimary)}

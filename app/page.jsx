@@ -808,6 +808,7 @@ export default function Home() {
      원정대 / 파티 / 레이드 목록은 서버(/api/state)가 기준. 로컬 변경은 자동으로 올리고,
      다른 사람의 변경은 2초마다 받아온다. 동시에 수정하면 원정대·파티·레이드 단위로 3-way 병합. */
   const [syncStatus, setSyncStatus] = useState("connecting"); // connecting | live | local | error
+  const adminTokenRef = useRef("");
   const sync = useRef({ ready: false, version: 0, base: null, baseSnap: "", pushing: false, timer: null });
   const latest = useRef({ members: [], parties: [], raids: DEFAULT_RAIDS });
 
@@ -849,7 +850,7 @@ export default function Home() {
     try {
       const res = await fetch("/api/state", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(adminTokenRef.current ? { "x-admin-token": adminTokenRef.current } : {}) },
         body: JSON.stringify({ baseVersion: s.version, members: cur0.members, parties: cur0.parties, raids: cur0.raids }),
       });
       const data = await res.json().catch(() => ({}));
@@ -858,6 +859,10 @@ export default function Home() {
         s.base = cur0;
         s.baseSnap = snap;
         setSyncStatus(st => (st === "local" ? st : "live"));
+      } else if (res.status === 403 && data.state) {
+        // 관리자 권한 없이 레이드를 지운 경우 → 서버 상태로 되돌림
+        adoptServer(data.state);
+        alert(data.error || "관리자만 할 수 있는 작업입니다.");
       } else if (res.status === 409 && data.state) {
         // 다른 사람이 먼저 저장함 → 내 변경분을 서버 최신본 위에 병합해서 다시 올림
         const server = normalizeServer(data.state);
@@ -1006,7 +1011,10 @@ export default function Home() {
   };
 
   const removeRaid = (id) => saveRaids(RAID_LIST.filter(r => r.id !== id));
-  const removeSeries = (category) => saveRaids(RAID_LIST.filter(r => r.category !== category));
+  const removeSeries = (category) => {
+    if (RAID_CATEGORIES.length <= 1) { alert("레이드는 최소 1개는 있어야 합니다."); return; }
+    saveRaids(RAID_LIST.filter(r => r.category !== category));
+  };
 
   /* ---------- UI 전용 상태 (화면 전환 / 스플래시 / 배경) ---------- */
   const [screen, setScreen] = useState("home");
@@ -1019,6 +1027,78 @@ export default function Home() {
   const [clearOwner, setClearOwner] = useState("");
   const [clearTab, setClearTab] = useState("party");
   const [newRaid, setNewRaid] = useState({ series: "", diff: "노말", type: 8, minLevel: 1700, image: "/raid_1.jpg" });
+  const [uploading, setUploading] = useState(false);
+
+  /* ---------- 관리자 (레이드 삭제 권한) ---------- */
+  const [adminToken, setAdminToken] = useState("");
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [adminPw, setAdminPw] = useState("");
+  const [adminErr, setAdminErr] = useState("");
+  const isAdmin = !!adminToken;
+  useEffect(() => {
+    let saved = "";
+    try { saved = localStorage.getItem("loa_admin_token") || ""; } catch {}
+    if (!saved) return;
+    // 저장된 토큰이 아직 유효한지 서버에 확인 (비밀번호가 바뀌었으면 자동 로그아웃)
+    fetch("/api/admin", { headers: { "x-admin-token": saved } })
+      .then(r => r.json())
+      .then(d => {
+        if (d.admin) { adminTokenRef.current = saved; setAdminToken(saved); }
+        else { try { localStorage.removeItem("loa_admin_token"); } catch {} }
+      })
+      .catch(() => {});
+  }, []);
+  const adminLogin = async () => {
+    setAdminErr("");
+    try {
+      const res = await fetch("/api/admin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: adminPw }) });
+      const d = await res.json();
+      if (!res.ok) { setAdminErr(d.error || "로그인 실패"); return; }
+      adminTokenRef.current = d.token;
+      setAdminToken(d.token);
+      try { localStorage.setItem("loa_admin_token", d.token); } catch {}
+      setAdminOpen(false);
+      setAdminPw("");
+    } catch {
+      setAdminErr("서버와 통신하지 못했습니다.");
+    }
+  };
+  const adminLogout = () => {
+    adminTokenRef.current = "";
+    setAdminToken("");
+    try { localStorage.removeItem("loa_admin_token"); } catch {}
+  };
+  // 관리자 전용 동작: 로그인 안 되어 있으면 로그인 창을 띄운다
+  const requireAdmin = (fn) => () => {
+    if (!isAdmin) { setAdminErr(""); setAdminOpen(true); return; }
+    fn();
+  };
+
+  // 내 컴퓨터 이미지를 줄여서(가로 최대 1600px, JPEG) 서버에 올리고 주소를 받는다
+  const uploadRaidImage = async (file) => {
+    if (!file) return null;
+    if (!/^image\//.test(file.type)) { alert("이미지 파일만 올릴 수 있습니다."); return null; }
+    setUploading(true);
+    try {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, 1600 / bitmap.width);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      let quality = 0.85, dataUrl = canvas.toDataURL("image/jpeg", quality);
+      while (dataUrl.length > 2_800_000 && quality > 0.4) { quality -= 0.15; dataUrl = canvas.toDataURL("image/jpeg", quality); }
+      const res = await fetch("/api/image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) });
+      const d = await res.json();
+      if (!res.ok) { alert(d.error || "이미지 업로드에 실패했습니다."); return null; }
+      return d.url;
+    } catch {
+      alert("이미지를 읽지 못했습니다.");
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 1500);
@@ -1468,6 +1548,22 @@ export default function Home() {
         <div style={{ position: "absolute", bottom: 28, fontFamily: mono, fontSize: 11, letterSpacing: ".16em", color: "#5A626C" }}>MADE BY 이현</div>
       </div>
 
+      {/* admin login */}
+      {adminOpen && (
+        <div onClick={() => setAdminOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 97, background: "rgba(5,7,9,.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <form onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); adminLogin(); }} style={{ width: "min(340px,100%)", background: "#14181D", border: "1px solid #2C333C", borderRadius: 18, padding: 20, display: "flex", flexDirection: "column", gap: 12, animation: "popIn .3s cubic-bezier(.2,.7,.3,1) both" }}>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>관리자 로그인</div>
+            <div style={{ fontSize: 12, color: "#8B949E" }}>레이드 삭제와 목록 초기화는 관리자만 할 수 있습니다.</div>
+            <input autoFocus type="password" inputMode="numeric" value={adminPw} onChange={(e) => setAdminPw(e.target.value)} placeholder="비밀번호" style={{ background: "#0F1318", border: "1px solid #2C333C", borderRadius: 10, padding: "11px 14px", color: "#E8EAEC", fontSize: 13 }} />
+            {adminErr && <div style={{ fontSize: 12, color: "#E1424F" }}>{adminErr}</div>}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => setAdminOpen(false)} style={{ background: "transparent", color: "#8B949E", border: "1px solid #2C333C", borderRadius: 10, padding: "9px 14px", fontSize: 13, cursor: "pointer" }}>취소</button>
+              <button type="submit" style={{ background: "#C8F24C", color: "#0B0D10", border: "none", borderRadius: 10, padding: "9px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>로그인</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* guide modal */}
       {isGuideOpen && (
         <div onClick={() => setIsGuideOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 96, background: "rgba(5,7,9,.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
@@ -1487,7 +1583,7 @@ export default function Home() {
                 ["04", "최적 파티 자동 조합", <><b>파티 편성</b> 탭의 <b>[최적 파티 자동 조합]</b>을 누르면 레벨 조건, 서포터 수, 직업·원정대(부계정 포함) 중복을 고려해 앞 파티부터 꽉 채워 편성합니다. 자리가 없는 캐릭터는 <b>싱글 / 미편성</b>으로 아래에 모입니다.</>],
                 ["05", "보기 방식과 수동 편집", <><b>카드 보기 / 표 요약</b>을 전환하고, 레이드별·공대원별로 걸러 볼 수 있습니다. <b>파티 수동 편집</b>을 켜면 캐릭터를 눌러 선택한 뒤 다른 캐릭터나 빈 자리를 눌러 바꿀 수 있습니다 (표 요약에서도 가능).</>],
                 ["06", "클리어 체크", <><b>클리어 현황 → 파티별 클리어</b>에서 다녀온 파티를 눌러 클리어로 표시하세요. <b>캐릭터별 현황</b>에서는 캐릭터마다 레이드별로 남음 / 편성 / 클리어 상태를 한눈에 볼 수 있습니다.</>],
-                ["07", "레이드 관리", <><b>레이드 관리</b> 탭에서 새 레이드나 난이도를 추가하고, 이름·인원(4인/8인)·입장 레벨·배경 이미지를 바꿀 수 있습니다. 새 레이드는 입장 레벨이 되는 캐릭터에게 자동으로 선택되며, 다음 자동 조합부터 반영됩니다.</>],
+                ["07", "레이드 관리", <><b>레이드 관리</b> 탭에서 새 레이드나 난이도를 추가하고, 이름·인원(4인/8인)·입장 레벨·배경 이미지를 바꿀 수 있습니다. 배경은 <b>📁 내 PC</b>로 내 컴퓨터 이미지를 올릴 수도 있습니다. 새 레이드는 입장 레벨이 되는 캐릭터에게 자동으로 선택되며, 다음 자동 조합부터 반영됩니다. 레이드·난이도 삭제와 목록 초기화는 상단 <b>관리자</b> 로그인 후에만 할 수 있습니다.</>],
                 ["08", "모두 함께 보기", <>원정대 등록, 파티 편성, 클리어 체크는 서버에 저장되어 사이트에 접속한 모든 사람에게 몇 초 안에 똑같이 보입니다. 상단 오른쪽 점이 초록색이면 정상적으로 공유 중입니다.</>],
               ].map(([n, title, body]) => (
                 <div key={n} style={{ display: "flex", gap: 14, background: "#1B2027", border: "1px solid #262C34", borderRadius: 12, padding: "12px 14px" }}>
@@ -1635,6 +1731,15 @@ export default function Home() {
                 </div>
               );
             })()}
+            <button
+              className="adminBtn"
+              onClick={() => { if (isAdmin) adminLogout(); else { setAdminErr(""); setAdminOpen(true); } }}
+              title={isAdmin ? "관리자 로그아웃" : "관리자 로그인"}
+              style={{ background: isAdmin ? "rgba(200,242,76,.14)" : "transparent", color: isAdmin ? "#C8F24C" : "#8B949E", border: `1px solid ${isAdmin ? "rgba(200,242,76,.4)" : "rgba(255,255,255,.14)"}`, borderRadius: 999, padding: "7px 13px", fontSize: 12, fontWeight: isAdmin ? 700 : 500, cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              <span className="btnIcon">{isAdmin ? "🔓" : "🔒"}</span>
+              <span className="btnLabel">{isAdmin ? "관리자 ✓ 로그아웃" : "관리자"}</span>
+            </button>
             <button className="guideBtn" onClick={() => setIsGuideOpen(true)} style={{ background: "transparent", color: "#8B949E", border: "1px solid rgba(255,255,255,.14)", borderRadius: 999, padding: "7px 13px", fontSize: 12, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap" }}>
               <span className="btnIcon">?</span>
               <span className="btnLabel">사용 가이드</span>
@@ -1977,6 +2082,18 @@ export default function Home() {
                 if (v !== cur) fn(v);
               };
               const enterBlur = (e) => { if (e.key === "Enter") e.currentTarget.blur(); };
+              const imageUploadButton = (onDone) => (
+                <label title="내 컴퓨터의 이미지로 배경 설정" style={{ ...btnSmall, display: "inline-flex", alignItems: "center", padding: "0 11px", cursor: uploading ? "default" : "pointer", opacity: uploading ? .6 : 1, flex: "none" }}>
+                  {uploading ? "올리는 중…" : "📁 내 PC"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    disabled={uploading}
+                    style={{ display: "none" }}
+                    onChange={async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; const url = await uploadRaidImage(f); if (url) onDone(url); }}
+                  />
+                </label>
+              );
               const field = { ...input, padding: "8px 10px", fontSize: 13, borderRadius: 9 };
               const label = { fontSize: 11, color: "#8B949E", marginBottom: 5 };
               return (
@@ -1987,10 +2104,11 @@ export default function Home() {
                       <div style={sub}>자동 조합에 쓰이는 레이드 목록입니다. 새 레이드나 난이도를 추가하고 이름·인원·입장 레벨을 바꿀 수 있으며, 모든 사람에게 같이 적용됩니다. 이미 짜둔 파티는 그대로이고, 다음 자동 조합부터 반영됩니다.</div>
                     </div>
                     <button
-                      onClick={() => { if (window.confirm("레이드 목록을 기본값으로 되돌릴까요? 추가하거나 바꾼 레이드가 모두 사라집니다.")) saveRaids(DEFAULT_RAIDS); }}
+                      onClick={requireAdmin(() => { if (window.confirm("레이드 목록을 기본값으로 되돌릴까요? 추가하거나 바꾼 레이드가 모두 사라집니다.")) saveRaids(DEFAULT_RAIDS); })}
+                      title={isAdmin ? "" : "관리자만 할 수 있습니다"}
                       style={{ ...btnSmall, background: "transparent", color: "#8B949E", padding: "9px 12px" }}
                     >
-                      기본 목록으로 초기화
+                      {isAdmin ? "" : "🔒 "}기본 목록으로 초기화
                     </button>
                   </div>
 
@@ -2010,7 +2128,7 @@ export default function Home() {
                     style={{ ...card, display: "flex", flexDirection: "column", gap: 12 }}
                   >
                     <div style={{ fontSize: 14, fontWeight: 700 }}>새 레이드 추가</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "minmax(200px,2fr) minmax(110px,1fr) 110px 130px minmax(150px,1.2fr) auto", gap: 10, alignItems: "end" }} className="raidForm">
+                    <div style={{ display: "grid", gridTemplateColumns: "minmax(200px,2fr) minmax(110px,1fr) 110px 130px minmax(200px,1.4fr) auto", gap: 10, alignItems: "end" }} className="raidForm">
                       <div>
                         <div style={label}>레이드 이름</div>
                         <input value={newRaid.series} onChange={(e) => setNewRaid(r => ({ ...r, series: e.target.value }))} placeholder="예: 3막:칠흑, 폭풍의 밤" style={{ ...field, width: "100%" }} />
@@ -2032,9 +2150,13 @@ export default function Home() {
                       </div>
                       <div>
                         <div style={label}>배경 이미지</div>
-                        <select value={newRaid.image} onChange={(e) => setNewRaid(r => ({ ...r, image: e.target.value }))} style={{ ...field, width: "100%", cursor: "pointer" }}>
-                          {RAID_IMAGES.map(([n, src]) => <option key={src} value={src}>{n}</option>)}
-                        </select>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <select value={newRaid.image} onChange={(e) => setNewRaid(r => ({ ...r, image: e.target.value }))} style={{ ...field, width: "100%", minWidth: 0, cursor: "pointer" }}>
+                            {!RAID_IMAGES.some(([, src]) => src === newRaid.image) && <option value={newRaid.image}>업로드한 이미지</option>}
+                            {RAID_IMAGES.map(([n, src]) => <option key={src} value={src}>{n}</option>)}
+                          </select>
+                          {imageUploadButton(url => setNewRaid(r => ({ ...r, image: url })))}
+                        </div>
                       </div>
                       <button type="submit" style={{ ...btnPrimary, padding: "10px 16px" }}>+ 추가</button>
                     </div>
@@ -2071,17 +2193,21 @@ export default function Home() {
                             </div>
                             <div>
                               <div style={label}>배경 이미지</div>
-                              <select value={RAID_IMAGES.some(([, src]) => src === image) ? image : ""} onChange={(e) => updateSeries(cat, { image: e.target.value })} style={{ ...field, cursor: "pointer", background: "rgba(11,13,16,.7)" }}>
-                                {!RAID_IMAGES.some(([, src]) => src === image) && <option value="">기본</option>}
-                                {RAID_IMAGES.map(([n, src]) => <option key={src} value={src}>{n}</option>)}
-                              </select>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <select value={image} onChange={(e) => updateSeries(cat, { image: e.target.value })} style={{ ...field, cursor: "pointer", background: "rgba(11,13,16,.7)" }}>
+                                  {!RAID_IMAGES.some(([, src]) => src === image) && <option value={image}>업로드한 이미지</option>}
+                                  {RAID_IMAGES.map(([n, src]) => <option key={src} value={src}>{n}</option>)}
+                                </select>
+                                {imageUploadButton(url => updateSeries(cat, { image: url }))}
+                              </div>
                             </div>
                             <button
                               type="button"
-                              onClick={() => { if (window.confirm(`'${series}' 레이드(난이도 ${raids.length}개)를 삭제할까요?`)) removeSeries(cat); }}
-                              style={{ ...btnSmall, background: "rgba(225,66,79,.1)", color: "#E1424F", border: "1px solid rgba(225,66,79,.35)", padding: "9px 12px" }}
+                              onClick={requireAdmin(() => { if (window.confirm(`'${series}' 레이드(난이도 ${raids.length}개)를 삭제할까요?`)) removeSeries(cat); })}
+                              title={isAdmin ? "레이드 삭제" : "관리자만 삭제할 수 있습니다"}
+                              style={{ ...btnSmall, background: "rgba(225,66,79,.1)", color: "#E1424F", border: "1px solid rgba(225,66,79,.35)", padding: "9px 12px", opacity: isAdmin ? 1 : .6 }}
                             >
-                              레이드 삭제
+                              {isAdmin ? "" : "🔒 "}레이드 삭제
                             </button>
                           </div>
                         </div>
@@ -2109,11 +2235,11 @@ export default function Home() {
                               <button
                                 type="button"
                                 disabled={raids.length === 1}
-                                onClick={() => { if (window.confirm(`'${r.name}' 난이도를 삭제할까요?`)) removeRaid(r.id); }}
-                                title={raids.length === 1 ? "마지막 난이도는 '레이드 삭제'로 지워주세요" : "이 난이도 삭제"}
+                                onClick={requireAdmin(() => { if (window.confirm(`'${r.name}' 난이도를 삭제할까요?`)) removeRaid(r.id); })}
+                                title={raids.length === 1 ? "마지막 난이도는 '레이드 삭제'로 지워주세요" : isAdmin ? "이 난이도 삭제" : "관리자만 삭제할 수 있습니다"}
                                 style={{ ...btnSmall, background: "transparent", color: "#6B737C", opacity: raids.length === 1 ? .4 : 1 }}
                               >
-                                삭제
+                                {isAdmin ? "" : "🔒 "}삭제
                               </button>
                             </div>
                           ))}

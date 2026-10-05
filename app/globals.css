@@ -47,7 +47,9 @@ button:disabled { cursor: default; }
   .navRow { order: 2; flex: 1 1 100% !important; }
   .brandLabel { display: none; }
   .guideBtn { padding: 7px 11px !important; }
-  .guideBtn .btnLabel, .syncPill .btnLabel { display: none; }
+  .guideBtn .btnLabel, .syncPill .btnLabel, .adminBtn .btnLabel { display: none; }
+  .adminBtn .btnIcon { display: inline; }
+  .adminBtn { padding: 7px 11px !important; }
   .syncPill { padding: 9px !important; }
   .guideBtn .btnIcon { display: inline; }
   /* 오른쪽 요약 레일은 폰에서 숨김 (각 화면에 같은 기능 버튼이 있음) */

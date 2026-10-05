@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getJSON, createJSON, casJSON, hasKV } from "../../../lib/store";
+import { isAdmin } from "../../../lib/admin";
 
 // 모든 사람이 함께 보는 공유 상태: 원정대 목록 + 파티 편성(클리어 포함) + 레이드 목록
 const KEY = "loa:party-maker:main";
@@ -41,6 +42,13 @@ export async function PUT(request) {
     const curVersion = cur ? cur.version || 0 : 0;
     if (baseVersion !== curVersion) {
       return NextResponse.json({ conflict: true, state: cur || emptyState() }, { status: 409 });
+    }
+    // 레이드(난이도) 삭제는 관리자만
+    if (raids && cur && Array.isArray(cur.raids)) {
+      const removed = cur.raids.filter(r => !raids.some(n => n && n.id === r.id));
+      if (removed.length && !isAdmin(request)) {
+        return NextResponse.json({ error: "레이드 삭제는 관리자만 할 수 있습니다.", forbidden: true, state: cur }, { status: 403 });
+      }
     }
     const next = { version: curVersion + 1, members, parties, raids: raids || (cur && cur.raids) || null, updatedAt: Date.now() };
     const ok = cur ? await casJSON(KEY, next, curVersion) : await createJSON(KEY, next);

@@ -377,8 +377,9 @@ export default function Home() {
     }
   };
 
-  // 직업/원정대(부계정) 중복 없이 최대한 많은 캐릭터를 편성하되,
-  // 앞 파티부터 꽉 채우도록(풀파티 우선) 배치한다.
+  // 직업/원정대(부계정) 중복 없이 배치하되,
+  // 1순위: 앞 파티부터 최대한 꽉 채운다 (예: 4인 레이드 딜러 4명 → 2+2 가 아니라 3+1)
+  // 2순위: 그 안에서 남는(미편성) 캐릭터를 최소화한다.
   const packRaid = (sups, dlrs, type) => {
     const maxSup = type === 8 ? 2 : 1;
     const maxDlr = type === 8 ? 6 : 3;
@@ -434,23 +435,32 @@ export default function Home() {
         if (p.members.length >= 2) good.push(p.members);
         else rest.push(...p.members);
       }
-      const sizes = good.map(g => g.length);
+      good.sort((a, b) => b.length - a.length); // 가장 꽉 찬 파티가 1번
       return {
         parties: good,
         leftovers: rest,
         placed: all.length - rest.length,
-        // 파티가 앞쪽부터 꽉 찼을수록 커지는 지표 (제곱합)
-        fullness: sizes.reduce((s, x) => s + x * x, 0),
+        sizes: good.map(g => g.length), // 내림차순
       };
     };
 
     const pcap = Math.max(1, Math.floor(all.length / 2));
     let best = null;
-    const better = (r) =>
-      !best ||
-      r.placed > best.placed ||
-      (r.placed === best.placed && r.fullness > best.fullness) ||
-      (r.placed === best.placed && r.fullness === best.fullness && r.parties.length < best.parties.length);
+    // 파티 인원을 큰 순서로 나열해 앞에서부터 비교 (첫 파티가 더 꽉 찬 쪽이 이김)
+    const cmpSizes = (a, b) => {
+      for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const d = (a[i] || 0) - (b[i] || 0);
+        if (d !== 0) return d;
+      }
+      return 0;
+    };
+    const better = (r) => {
+      if (!best) return true;
+      const c = cmpSizes(r.sizes, best.sizes);
+      if (c !== 0) return c > 0;                                  // 1순위: 앞 파티부터 꽉 채우기
+      if (r.placed !== best.placed) return r.placed > best.placed; // 2순위: 남는 사람 최소화
+      return r.parties.length < best.parties.length;
+    };
 
     for (let n = 1; n <= pcap; n++) {
       for (const mode of ["fill", "spread"]) {

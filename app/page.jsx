@@ -112,6 +112,28 @@ const CLASS_ICONS = {
   "스페셜리스트": "/icons/specialist.svg"
 };
 
+// 3-way 병합: base(마지막으로 서버와 맞췄던 상태) 대비 내가 바꾼 항목은 내 것을, 안 바꾼 항목은 서버 것을 쓴다.
+// 항목 단위 = 원정대(owner) / 파티(id). 순서는 내가 순서를 바꿨으면 내 순서, 아니면 서버 순서.
+const merge3 = (base, local, server, keyOf) => {
+  const toMap = (arr) => new Map((arr || []).map(x => [keyOf(x), x]));
+  const b = toMap(base), l = toMap(local), sv = toMap(server);
+  const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+  const pick = (k) => (same(l.get(k), b.get(k)) ? sv.get(k) : l.get(k));
+  const localOrderChanged = !same((local || []).map(keyOf), (base || []).map(keyOf));
+  const order = localOrderChanged
+    ? [...(local || []).map(keyOf), ...(server || []).map(keyOf)]
+    : [...(server || []).map(keyOf), ...(local || []).map(keyOf)];
+  const seen = new Set();
+  const out = [];
+  for (const k of order) {
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const v = pick(k);
+    if (v !== undefined) out.push(v);
+  }
+  return out;
+};
+
 export default function Home() {
   const [searchName, setSearchName] = useState("");
   const [searchRealName, setSearchRealName] = useState("");
@@ -698,6 +720,126 @@ export default function Home() {
     return "/raid_1.jpg";
   };
 
+  /* ---------- 서버 공유 동기화 ----------
+     원정대/파티 상태는 서버(/api/state)가 기준. 로컬 변경은 자동으로 올리고,
+     다른 사람의 변경은 2초마다 받아온다. 동시에 수정하면 원정대·파티 단위로 3-way 병합. */
+  const [syncStatus, setSyncStatus] = useState("connecting"); // connecting | live | local | error
+  const sync = useRef({ ready: false, version: 0, base: null, baseSnap: "", pushing: false, timer: null });
+  const latest = useRef({ members: [], parties: [] });
+
+  const snapOf = (members, parties) => JSON.stringify([members, parties]);
+
+  const adoptServer = (state) => {
+    const members = state.members || [];
+    const parties = migratePartyNames(state.parties || []);
+    const s = sync.current;
+    s.version = state.version || 0;
+    s.base = { members, parties };
+    s.baseSnap = snapOf(members, parties);
+    latest.current = { members, parties };
+    setMemberList(members);
+    setPartyResult(parties);
+    try {
+      localStorage.setItem("loa_members", JSON.stringify(members));
+      localStorage.setItem("loa_party_result", JSON.stringify(parties));
+    } catch {}
+  };
+
+  const pushState = async () => {
+    const s = sync.current;
+    if (!s.ready || s.pushing) return;
+    const { members, parties } = latest.current;
+    const snap = snapOf(members, parties);
+    if (snap === s.baseSnap) return;
+    s.pushing = true;
+    try {
+      const res = await fetch("/api/state", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ baseVersion: s.version, members, parties }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        s.version = data.version;
+        s.base = { members, parties };
+        s.baseSnap = snap;
+        setSyncStatus(st => (st === "local" ? st : "live"));
+      } else if (res.status === 409 && data.state) {
+        // 다른 사람이 먼저 저장함 → 내 변경분을 서버 최신본 위에 병합해서 다시 올림
+        const server = { members: data.state.members || [], parties: migratePartyNames(data.state.parties || []) };
+        const cur = latest.current;
+        const merged = {
+          members: merge3(s.base.members, cur.members, server.members, m => m.owner),
+          parties: merge3(s.base.parties, cur.parties, server.parties, p => p.id),
+        };
+        s.version = data.state.version || 0;
+        s.base = server;
+        s.baseSnap = snapOf(server.members, server.parties);
+        latest.current = merged;
+        setMemberList(merged.members);
+        setPartyResult(merged.parties);
+      } else {
+        setSyncStatus("error");
+      }
+    } catch {
+      setSyncStatus("error");
+    } finally {
+      s.pushing = false;
+      if (snapOf(latest.current.members, latest.current.parties) !== s.baseSnap) {
+        clearTimeout(s.timer);
+        s.timer = setTimeout(pushState, 300);
+      }
+    }
+  };
+
+  // 최초 접속: 서버 상태를 받아오고, 서버가 비어 있으면 이 브라우저의 기존 데이터를 올린다
+  useEffect(() => {
+    let alive = true;
+    const pull = async (first) => {
+      const s = sync.current;
+      try {
+        const res = await fetch("/api/state", { cache: "no-store" });
+        const data = await res.json();
+        if (!alive || !res.ok) throw new Error();
+        if (first) {
+          s.ready = true;
+          setSyncStatus(data.shared ? "live" : "local");
+          const server = data.state;
+          if (!server.version) {
+            // 서버가 비어 있음 → 로컬 데이터(있다면)를 첫 공유 상태로 업로드
+            s.version = 0; s.base = { members: [], parties: [] }; s.baseSnap = snapOf([], []);
+            pushState();
+          } else {
+            adoptServer(server);
+          }
+          return;
+        }
+        setSyncStatus(st => (st === "error" ? (data.shared ? "live" : "local") : st));
+        const dirty = snapOf(latest.current.members, latest.current.parties) !== s.baseSnap;
+        if (data.state.version > s.version && !s.pushing && !dirty) adoptServer(data.state);
+        else if (data.state.version > s.version && dirty) pushState(); // 409 → 병합 경로
+      } catch {
+        if (alive) setSyncStatus("error");
+        if (first && alive) setTimeout(() => pull(true), 3000);
+      }
+    };
+    pull(true);
+    const t = setInterval(() => { if (sync.current.ready) pull(false); }, 2000);
+    return () => { alive = false; clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 로컬에서 원정대/파티가 바뀌면 서버로 올린다 (짧게 모아서)
+  useEffect(() => {
+    latest.current = { members: memberList, parties: partyResult };
+    const s = sync.current;
+    if (!s.ready) return;
+    if (snapOf(memberList, partyResult) === s.baseSnap) return;
+    clearTimeout(s.timer);
+    s.timer = setTimeout(pushState, 250);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memberList, partyResult]);
+
   /* ---------- UI 전용 상태 (화면 전환 / 스플래시 / 배경) ---------- */
   const [screen, setScreen] = useState("home");
   const [splash, setSplash] = useState(true);
@@ -861,10 +1003,10 @@ export default function Home() {
     );
   };
 
-  const classLine = (member, color = "#8B949E") => (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color, whiteSpace: "nowrap", flex: "none" }}>
+  const classLine = (member, color = "#8B949E", size = 11) => (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: size, color, whiteSpace: "nowrap", flex: "none" }}>
       {CLASS_ICONS[member.className] && (
-        <img src={CLASS_ICONS[member.className]} alt={member.className} style={{ width: 13, height: 13, opacity: .9, flex: "none" }} />
+        <img src={CLASS_ICONS[member.className]} alt={member.className} style={{ width: size + 2, height: size + 2, opacity: .9, flex: "none" }} />
       )}
       {member.className}
     </span>
@@ -908,10 +1050,11 @@ export default function Home() {
     pending: { color: "#E5C04C", bg: "rgba(229,192,76,.08)", border: "rgba(229,192,76,.3)" },
   };
 
-  const charThumb = (member, size = 52) => (
-    <div style={{ width: size, height: size, borderRadius: 12, overflow: "hidden", flex: "none", background: "#0F1318", border: "1px solid #2C333C", display: "flex", alignItems: "center", justifyContent: "center" }}>
+  // 초상화: 상반신이 보이도록 위쪽 기준으로 확대해 자른다
+  const charThumb = (member, w = 52, h = w, zoom = 1.9) => (
+    <div style={{ width: w, height: h, borderRadius: 12, overflow: "hidden", flex: "none", background: "radial-gradient(circle at 50% 30%, #252C35 0%, #0F1318 75%)", border: "1px solid #2C333C", display: "flex", alignItems: "center", justifyContent: "center" }}>
       {member.characterImage
-        ? <img src={member.characterImage} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 12%", transform: "scale(1.9)", transformOrigin: "50% 14%" }} />
+        ? <img src={member.characterImage} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 10%", transform: `scale(${zoom})`, transformOrigin: "50% 12%" }} />
         : CLASS_ICONS[member.className] && <img src={CLASS_ICONS[member.className]} alt="" style={{ width: "55%", opacity: .7 }} />}
     </div>
   );
@@ -924,11 +1067,11 @@ export default function Home() {
         borderRadius: 14, padding: 12, display: "flex", flexDirection: "column", gap: 10
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, opacity: active ? 1 : .45 }}>
-          {charThumb(member)}
+          {charThumb(member, 92, 112, 1.45)}
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
             <span style={{ fontSize: 15, fontWeight: 700, wordBreak: "break-all", lineHeight: 1.25, textDecoration: active ? "none" : "line-through" }}>{member.charName}</span>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
-              {classLine(member, "#A8B0B9")}
+              {classLine(member, "#A8B0B9", 12)}
               {roleBadge(member, ownerName, false)}
             </div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, fontFamily: mono }}>
@@ -1116,9 +1259,9 @@ export default function Home() {
                       </div>
                       <div style={{ flex: 1, minWidth: 0, display: "flex", flexWrap: "wrap", gap: 5 }}>
                         {members.map((m, i) => (
-                          <span key={i} title={`${ownerLabel(m.owner)} · ${m.className}`} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "#C6CDD4", background: "#14181D", border: "1px solid #2C333C", borderRadius: 999, padding: "3px 10px 3px 7px", whiteSpace: "nowrap" }}>
-                            {CLASS_ICONS[m.className] && <img src={CLASS_ICONS[m.className]} alt={m.className} style={{ width: 13, height: 13, opacity: .9 }} />}
-                            <RoleIcon sup={HYBRID_CLASSES.includes(m.className) && m.role === "서포터"} size={9} />
+                          <span key={i} title={`${ownerLabel(m.owner)} · ${m.className}`} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 600, color: "#C6CDD4", background: "#14181D", border: "1px solid #2C333C", borderRadius: 999, padding: "3px 10px 3px 7px", whiteSpace: "nowrap" }}>
+                            {CLASS_ICONS[m.className] && <img src={CLASS_ICONS[m.className]} alt={m.className} style={{ width: 17, height: 17, opacity: .95 }} />}
+                            <RoleIcon sup={HYBRID_CLASSES.includes(m.className) && m.role === "서포터"} size={11} />
                             {m.charName}
                           </span>
                         ))}
@@ -1312,6 +1455,20 @@ export default function Home() {
                 <span>편집중</span>
               </button>
             )}
+            {(() => {
+              const meta = {
+                connecting: ["#8B949E", "연결 중", "서버에 연결하는 중입니다"],
+                live: ["#C8F24C", "실시간 공유", "모든 사람이 같은 원정대/파티/클리어 상태를 봅니다 (2초마다 갱신)"],
+                local: ["#E5C04C", "공유 저장소 미설정", "서버 저장소(Supabase 등) 환경변수가 없어 이 서버 메모리에만 저장됩니다"],
+                error: ["#E1424F", "동기화 오류", "서버와 통신하지 못했습니다. 자동으로 다시 시도합니다"],
+              }[syncStatus];
+              return (
+                <div className="syncPill" title={meta[2]} style={{ display: "flex", alignItems: "center", gap: 7, background: "rgba(27,32,39,.7)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 999, padding: "6px 11px", fontSize: 11, color: meta[0], whiteSpace: "nowrap" }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: meta[0], animation: "pulseDot 1.6s infinite" }} />
+                  <span className="btnLabel">{meta[1]}</span>
+                </div>
+              );
+            })()}
             <button className="guideBtn" onClick={() => setIsGuideOpen(true)} style={{ background: "transparent", color: "#8B949E", border: "1px solid rgba(255,255,255,.14)", borderRadius: 999, padding: "7px 13px", fontSize: 12, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap" }}>
               <span className="btnIcon">?</span>
               <span className="btnLabel">사용 가이드</span>
@@ -1331,7 +1488,7 @@ export default function Home() {
                   </div>
                   <div style={{ fontFamily: "'Archivo'", fontWeight: 800, fontSize: "clamp(38px,8vw,76px)", lineHeight: .98, letterSpacing: "-.03em", marginBottom: 12, textShadow: "0 10px 40px rgba(0,0,0,.65)", animation: "revealMask .8s cubic-bezier(.2,.7,.3,1) both" }}>로아 파티 메이커</div>
                   <div style={{ fontSize: 15, color: "#C6CDD4", maxWidth: 540, marginBottom: 22, textWrap: "pretty", textShadow: "0 2px 14px rgba(0,0,0,.6)" }}>
-                    대표 캐릭터명으로 원정대 등록 → 캐릭터별 클리어 체크 → 직업·원정대 중복 없이 최적 파티 자동 조합 → 수동 편집과 클리어 표시까지. 모든 데이터는 이 브라우저에 저장됩니다.
+                    대표 캐릭터명으로 원정대 등록 → 캐릭터별 클리어 체크 → 직업·원정대 중복 없이 최적 파티 자동 조합 → 수동 편집과 클리어 체크까지. 등록·편성·클리어는 접속한 모든 사람에게 실시간으로 공유됩니다.
                   </div>
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <button onClick={() => setScreen("roster")} style={{ ...btnPrimary, padding: "14px 22px", fontSize: 14 }}>원정대 등록하기</button>
@@ -1520,7 +1677,7 @@ export default function Home() {
                 }));
                 return { cat, left, done };
               });
-              const clearGrid = `minmax(200px,1.4fr) repeat(${RAID_CATEGORIES.length},minmax(118px,1fr))`;
+              const clearGrid = `minmax(230px,1.5fr) repeat(${RAID_CATEGORIES.length},minmax(118px,1fr))`;
               const cellLabel = (st) => {
                 switch (st.state) {
                   case "locked": return ["—", "레벨 미달"];
@@ -1604,12 +1761,12 @@ export default function Home() {
                           {m.characters.map(c => (
                             <div key={c.charName} style={{ display: "grid", gridTemplateColumns: clearGrid, gap: 8, alignItems: "center", padding: "8px 14px", borderBottom: "1px solid #1F242B", opacity: c.isExcluded ? .4 : 1 }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                                {charThumb(c, 36)}
+                                {charThumb(c, 54, 62, 1.6)}
                                 <div style={{ minWidth: 0 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 700, wordBreak: "break-all", lineHeight: 1.25 }}>{c.charName}</div>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                    {classLine(c)}
-                                    <span style={{ fontFamily: mono, fontSize: 10, color: "#C8F24C" }}>{c.level}</span>
+                                  <div style={{ fontSize: 15, fontWeight: 700, wordBreak: "break-all", lineHeight: 1.25 }}>{c.charName}</div>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 3 }}>
+                                    {classLine(c, "#A8B0B9", 13)}
+                                    <span style={{ fontFamily: mono, fontSize: 12, fontWeight: 600, color: "#C8F24C" }}>{c.level}</span>
                                   </div>
                                   {c.isExcluded && <div style={{ fontSize: 10, color: "#E1424F" }}>매칭 제외</div>}
                                 </div>

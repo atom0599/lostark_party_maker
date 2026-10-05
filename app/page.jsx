@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from "react";
 
-const NAV = [["home", "홈"], ["roster", "원정대"], ["clear", "클리어 현황"], ["parties", "파티 편성"]];
+const NAV = [["home", "홈"], ["roster", "원정대"], ["clear", "클리어 현황"], ["parties", "파티 편성"], ["raids", "레이드 관리"]];
 // 로스트아크 공식 아트웍 지역 일러스트 (CC BY-NC-SA 4.0, © Smilegate RPG)
 const BG_SEQ = [
   "/regions/elgacia.jpg", "/regions/aldebaran.jpg", "/regions/kadarum.jpg", "/regions/fleche.jpg",
@@ -35,36 +35,43 @@ function RoleIcon({ sup, size = 11 }) {
   );
 }
 
-const RAID_LIST = [
-  { id: 1, category: "벨가르딘", name: "죽음의 계율자, 벨가르딘 노말", type: 8, minLevel: 1750, reqSup: 2, reqDlr: 6 },
-  { id: 2, category: "벨가르딘", name: "죽음의 계율자, 벨가르딘 하드", type: 8, minLevel: 1770, reqSup: 2, reqDlr: 6 },
-  { id: 3, category: "벨가르딘", name: "죽음의 계율자, 벨가르딘 나이트메어", type: 8, minLevel: 1780, reqSup: 2, reqDlr: 6 },
-  { id: 4, category: "지평", name: "지평의 성당 1단계", type: 4, minLevel: 1700, reqSup: 1, reqDlr: 3 },
-  { id: 5, category: "지평", name: "지평의 성당 2단계", type: 4, minLevel: 1720, reqSup: 1, reqDlr: 3 },
-  { id: 6, category: "지평", name: "지평의 성당 3단계", type: 4, minLevel: 1750, reqSup: 1, reqDlr: 3 },
-  { id: 7, category: "세르카", name: "고통의 마녀, 세르카 노말", type: 4, minLevel: 1710, reqSup: 1, reqDlr: 3 },
-  { id: 8, category: "세르카", name: "고통의 마녀, 세르카 하드", type: 4, minLevel: 1730, reqSup: 1, reqDlr: 3 },
-  { id: 9, category: "세르카", name: "고통의 마녀, 세르카 나이트메어", type: 4, minLevel: 1740, reqSup: 1, reqDlr: 3 },
-  { id: 10, category: "4막", name: "4막:파멸의 성채 노말", type: 8, minLevel: 1700, reqSup: 2, reqDlr: 6 },
-  { id: 11, category: "4막", name: "4막:파멸의 성채 하드", type: 8, minLevel: 1720, reqSup: 2, reqDlr: 6 },
-  { id: 12, category: "종막", name: "종막:최후의 날 노말", type: 8, minLevel: 1710, reqSup: 2, reqDlr: 6 },
-  { id: 13, category: "종막", name: "종막:최후의 날 하드", type: 8, minLevel: 1730, reqSup: 2, reqDlr: 6 },
+// 기본 레이드 목록. 실제 목록은 '레이드 관리' 탭에서 수정되며 서버에 공유 저장된다.
+// category: 같은 레이드(난이도 묶음)를 구분하는 키 / series: 레이드 이름 / diff: 난이도(단계)
+const mkRaid = (id, category, series, diff, type, minLevel, image) => ({
+  id, category, series, diff, name: `${series} ${diff}`, type, minLevel,
+  reqSup: type === 8 ? 2 : 1, reqDlr: type === 8 ? 6 : 3, image,
+});
+const DEFAULT_RAIDS = [
+  mkRaid(1, "벨가르딘", "죽음의 계율자, 벨가르딘", "노말", 8, 1750, "/raid_5.jpg"),
+  mkRaid(2, "벨가르딘", "죽음의 계율자, 벨가르딘", "하드", 8, 1770, "/raid_5.jpg"),
+  mkRaid(3, "벨가르딘", "죽음의 계율자, 벨가르딘", "나이트메어", 8, 1780, "/raid_5.jpg"),
+  mkRaid(4, "지평", "지평의 성당", "1단계", 4, 1700, "/raid_4.jpg"),
+  mkRaid(5, "지평", "지평의 성당", "2단계", 4, 1720, "/raid_4.jpg"),
+  mkRaid(6, "지평", "지평의 성당", "3단계", 4, 1750, "/raid_4.jpg"),
+  mkRaid(7, "세르카", "고통의 마녀, 세르카", "노말", 4, 1710, "/raid_3.jpg"),
+  mkRaid(8, "세르카", "고통의 마녀, 세르카", "하드", 4, 1730, "/raid_3.jpg"),
+  mkRaid(9, "세르카", "고통의 마녀, 세르카", "나이트메어", 4, 1740, "/raid_3.jpg"),
+  mkRaid(10, "4막", "4막:파멸의 성채", "노말", 8, 1700, "/raid_1.jpg"),
+  mkRaid(11, "4막", "4막:파멸의 성채", "하드", 8, 1720, "/raid_1.jpg"),
+  mkRaid(12, "종막", "종막:최후의 날", "노말", 8, 1710, "/raid_2.jpg"),
+  mkRaid(13, "종막", "종막:최후의 날", "하드", 8, 1730, "/raid_2.jpg"),
 ];
-const RAID_CATEGORIES = [...new Set(RAID_LIST.map(r => r.category))];
 
-// 화면 표시용 레이드 정식 명칭 / 난이도(단계) 라벨
-const CATEGORY_TITLE = {
-  "벨가르딘": "죽음의 계율자, 벨가르딘",
-  "지평": "지평의 성당",
-  "세르카": "고통의 마녀, 세르카",
-  "4막": "4막:파멸의 성채",
-  "종막": "종막:최후의 날",
-};
-const raidDiff = (raid) => raid.name.slice(CATEGORY_TITLE[raid.category].length).trim();
+// 레이드 배경으로 고를 수 있는 이미지
+const RAID_IMAGES = [
+  ["벨가르딘", "/raid_5.jpg"], ["지평의 성당", "/raid_4.jpg"], ["세르카", "/raid_3.jpg"],
+  ["파멸의 성채", "/raid_1.jpg"], ["최후의 날", "/raid_2.jpg"],
+  ["엘가시아", "/regions/elgacia.jpg"], ["알데바란의 바다", "/regions/aldebaran.jpg"], ["카다룸 제도", "/regions/kadarum.jpg"],
+  ["플레체", "/regions/fleche.jpg"], ["파푸니카", "/regions/punika.jpg"], ["볼다이크", "/regions/voldis.jpg"], ["베른 남부", "/regions/south_vern.jpg"],
+];
 
-// 예전 이름(예: "벨가르딘 노말")으로 저장된 파티 결과를 현재 정식 명칭으로 변환
-const migratePartyNames = (parties) => parties.map(p => {
-  const raid = RAID_LIST.find(r => r.id === p.originalRaidId);
+// 저장된 레이드 목록이 올바른 형태인지
+const validRaids = (raids) => Array.isArray(raids) && raids.length > 0
+  && raids.every(r => r && typeof r.id === "number" && r.category && r.name && (r.type === 4 || r.type === 8) && typeof r.minLevel === "number");
+
+// 파티 결과의 레이드 이름을 현재 레이드 목록의 이름으로 맞춘다 (예전 이름 / 레이드 관리에서 이름 변경 시)
+const migratePartyNames = (parties, raids) => parties.map(p => {
+  const raid = raids.find(r => r.id === p.originalRaidId);
   if (!raid || !p.baseRaidName || p.baseRaidName === raid.name) return p;
   return { ...p, raidName: p.raidName.replace(p.baseRaidName, raid.name), baseRaidName: raid.name };
 });
@@ -151,15 +158,27 @@ export default function Home() {
   const [swapTarget, setSwapTarget] = useState(null);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
+  // 레이드 목록 (레이드 관리 탭에서 수정, 서버 공유). 아래 로직은 모두 이 목록을 기준으로 동작한다.
+  const [raidList, setRaidList] = useState(DEFAULT_RAIDS);
+  const RAID_LIST = raidList;
+  const RAID_CATEGORIES = [...new Set(RAID_LIST.map(r => r.category))];
+  const CATEGORY_TITLE = Object.fromEntries(RAID_CATEGORIES.map(c => [c, RAID_LIST.find(r => r.category === c).series || c]));
+  const raidDiff = (raid) => raid.diff || raid.name.slice((CATEGORY_TITLE[raid.category] || "").length).trim();
+
   useEffect(() => {
     const savedMembers = localStorage.getItem("loa_members");
     const savedResult = localStorage.getItem("loa_party_result");
-    if (savedMembers) {
+    let raids = DEFAULT_RAIDS;
+    try {
+      const savedRaids = JSON.parse(localStorage.getItem("loa_raids") || "null");
       // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (validRaids(savedRaids)) { raids = savedRaids; setRaidList(savedRaids); }
+    } catch {}
+    if (savedMembers) {
       try { setMemberList(JSON.parse(savedMembers)); } catch {}
     }
     if (savedResult) {
-      try { setPartyResult(migratePartyNames(JSON.parse(savedResult))); } catch {}
+      try { setPartyResult(migratePartyNames(JSON.parse(savedResult), raids)); } catch {}
     }
   }, []);
 
@@ -778,73 +797,81 @@ export default function Home() {
     saveToLocalStorage(memberList, matchResults);
   };
 
-  const getRaidIllustration = (originalRaidId) => {
-    if (originalRaidId >= 1 && originalRaidId <= 3) return "/raid_5.jpg"; 
-    if (originalRaidId >= 4 && originalRaidId <= 6) return "/raid_4.jpg"; 
-    if (originalRaidId >= 7 && originalRaidId <= 9) return "/raid_3.jpg"; 
-    if (originalRaidId >= 10 && originalRaidId <= 11) return "/raid_1.jpg"; 
-    if (originalRaidId >= 12 && originalRaidId <= 13) return "/raid_2.jpg"; 
-    return "/raid_1.jpg";
+  const getRaidIllustration = (raidId) => {
+    const raid = RAID_LIST.find(r => r.id === raidId);
+    if (raid && raid.image) return raid.image;
+    const sameCat = raid && RAID_LIST.find(r => r.category === raid.category && r.image);
+    return (sameCat && sameCat.image) || "/raid_1.jpg";
   };
 
   /* ---------- 서버 공유 동기화 ----------
-     원정대/파티 상태는 서버(/api/state)가 기준. 로컬 변경은 자동으로 올리고,
-     다른 사람의 변경은 2초마다 받아온다. 동시에 수정하면 원정대·파티 단위로 3-way 병합. */
+     원정대 / 파티 / 레이드 목록은 서버(/api/state)가 기준. 로컬 변경은 자동으로 올리고,
+     다른 사람의 변경은 2초마다 받아온다. 동시에 수정하면 원정대·파티·레이드 단위로 3-way 병합. */
   const [syncStatus, setSyncStatus] = useState("connecting"); // connecting | live | local | error
   const sync = useRef({ ready: false, version: 0, base: null, baseSnap: "", pushing: false, timer: null });
-  const latest = useRef({ members: [], parties: [] });
+  const latest = useRef({ members: [], parties: [], raids: DEFAULT_RAIDS });
 
-  const snapOf = (members, parties) => JSON.stringify([members, parties]);
+  const snapOf = (st) => JSON.stringify([st.members, st.parties, st.raids]);
+
+  const normalizeServer = (state) => {
+    const raids = validRaids(state.raids) ? state.raids : DEFAULT_RAIDS;
+    return { members: state.members || [], parties: migratePartyNames(state.parties || [], raids), raids };
+  };
+
+  const applyLocal = (st) => {
+    latest.current = st;
+    setMemberList(st.members);
+    setPartyResult(st.parties);
+    setRaidList(st.raids);
+    try {
+      localStorage.setItem("loa_members", JSON.stringify(st.members));
+      localStorage.setItem("loa_party_result", JSON.stringify(st.parties));
+      localStorage.setItem("loa_raids", JSON.stringify(st.raids));
+    } catch {}
+  };
 
   const adoptServer = (state) => {
-    const members = state.members || [];
-    const parties = migratePartyNames(state.parties || []);
+    const st = normalizeServer(state);
     const s = sync.current;
     s.version = state.version || 0;
-    s.base = { members, parties };
-    s.baseSnap = snapOf(members, parties);
-    latest.current = { members, parties };
-    setMemberList(members);
-    setPartyResult(parties);
-    try {
-      localStorage.setItem("loa_members", JSON.stringify(members));
-      localStorage.setItem("loa_party_result", JSON.stringify(parties));
-    } catch {}
+    s.base = st;
+    s.baseSnap = snapOf(st);
+    applyLocal(st);
   };
 
   const pushState = async () => {
     const s = sync.current;
     if (!s.ready || s.pushing) return;
-    const { members, parties } = latest.current;
-    const snap = snapOf(members, parties);
+    const cur0 = latest.current;
+    const snap = snapOf(cur0);
     if (snap === s.baseSnap) return;
     s.pushing = true;
     try {
       const res = await fetch("/api/state", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ baseVersion: s.version, members, parties }),
+        body: JSON.stringify({ baseVersion: s.version, members: cur0.members, parties: cur0.parties, raids: cur0.raids }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         s.version = data.version;
-        s.base = { members, parties };
+        s.base = cur0;
         s.baseSnap = snap;
         setSyncStatus(st => (st === "local" ? st : "live"));
       } else if (res.status === 409 && data.state) {
         // 다른 사람이 먼저 저장함 → 내 변경분을 서버 최신본 위에 병합해서 다시 올림
-        const server = { members: data.state.members || [], parties: migratePartyNames(data.state.parties || []) };
+        const server = normalizeServer(data.state);
         const cur = latest.current;
+        const raids = merge3(s.base.raids, cur.raids, server.raids, r => r.id);
         const merged = {
           members: merge3(s.base.members, cur.members, server.members, m => m.owner),
-          parties: merge3(s.base.parties, cur.parties, server.parties, p => p.id),
+          parties: migratePartyNames(merge3(s.base.parties, cur.parties, server.parties, p => p.id), raids),
+          raids,
         };
         s.version = data.state.version || 0;
         s.base = server;
-        s.baseSnap = snapOf(server.members, server.parties);
-        latest.current = merged;
-        setMemberList(merged.members);
-        setPartyResult(merged.parties);
+        s.baseSnap = snapOf(server);
+        applyLocal(merged);
       } else {
         setSyncStatus("error");
       }
@@ -852,7 +879,7 @@ export default function Home() {
       setSyncStatus("error");
     } finally {
       s.pushing = false;
-      if (snapOf(latest.current.members, latest.current.parties) !== s.baseSnap) {
+      if (snapOf(latest.current) !== s.baseSnap) {
         clearTimeout(s.timer);
         s.timer = setTimeout(pushState, 300);
       }
@@ -873,8 +900,10 @@ export default function Home() {
           setSyncStatus(data.shared ? "live" : "local");
           const server = data.state;
           if (!server.version) {
-            // 서버가 비어 있음 → 로컬 데이터(있다면)를 첫 공유 상태로 업로드
-            s.version = 0; s.base = { members: [], parties: [] }; s.baseSnap = snapOf([], []);
+            // 서버가 비어 있음 → 이 브라우저에 데이터가 있을 때만 첫 공유 상태로 업로드
+            // (빈 브라우저가 먼저 접속해도 빈 상태를 올려서 다른 사람의 기존 데이터를 막지 않도록)
+            const empty = { members: [], parties: [], raids: DEFAULT_RAIDS };
+            s.version = 0; s.base = empty; s.baseSnap = snapOf(empty);
             pushState();
           } else {
             adoptServer(server);
@@ -882,7 +911,7 @@ export default function Home() {
           return;
         }
         setSyncStatus(st => (st === "error" ? (data.shared ? "live" : "local") : st));
-        const dirty = snapOf(latest.current.members, latest.current.parties) !== s.baseSnap;
+        const dirty = snapOf(latest.current) !== s.baseSnap;
         if (data.state.version > s.version && !s.pushing && !dirty) adoptServer(data.state);
         else if (data.state.version > s.version && dirty) pushState(); // 409 → 병합 경로
       } catch {
@@ -896,16 +925,88 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 로컬에서 원정대/파티가 바뀌면 서버로 올린다 (짧게 모아서)
+  // 로컬에서 원정대/파티/레이드 목록이 바뀌면 서버로 올린다 (짧게 모아서)
   useEffect(() => {
-    latest.current = { members: memberList, parties: partyResult };
+    latest.current = { members: memberList, parties: partyResult, raids: raidList };
     const s = sync.current;
     if (!s.ready) return;
-    if (snapOf(memberList, partyResult) === s.baseSnap) return;
+    if (snapOf(latest.current) === s.baseSnap) return;
     clearTimeout(s.timer);
     s.timer = setTimeout(pushState, 250);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [memberList, partyResult]);
+  }, [memberList, partyResult, raidList]);
+
+  /* ---------- 레이드 관리 ---------- */
+  // 레이드 목록 변경을 저장하고, 원정대 캐릭터의 레이드 선택과 파티 이름을 함께 정리한다.
+  //  - 삭제됐거나 입장 레벨이 올라 못 가게 된 난이도를 고른 캐릭터 → 같은 레이드의 갈 수 있는 최고 난이도로
+  //  - 새로 추가된 레이드 → 갈 수 있는 캐릭터에게 최고 난이도를 자동 선택
+  //  - 이미 클리어 체크(선택 없음)한 레이드는 그대로 둔다
+  const saveRaids = (nextRaids) => {
+    const prevCats = new Set(RAID_LIST.map(r => r.category));
+    const cats = [...new Set(nextRaids.map(r => r.category))];
+    const highestFor = (level, cat) => {
+      const ok = nextRaids.filter(r => r.category === cat && level >= r.minLevel);
+      return ok.length ? ok.reduce((m, r) => (r.minLevel > m.minLevel ? r : m), ok[0]).id : null;
+    };
+    const members = memberList.map(m => ({
+      ...m,
+      characters: m.characters.map(c => {
+        const prevAllowed = c.allowedRaids || RAID_LIST.filter(r => c.level >= r.minLevel).map(r => r.id);
+        const allowed = [];
+        for (const cat of cats) {
+          const prevSel = prevAllowed.map(id => RAID_LIST.find(r => r.id === id)).find(r => r && r.category === cat);
+          if (!prevCats.has(cat)) {
+            const h = highestFor(c.level, cat);
+            if (h != null) allowed.push(h);
+          } else if (prevSel) {
+            const still = nextRaids.find(r => r.id === prevSel.id && c.level >= r.minLevel);
+            const pick = still ? still.id : highestFor(c.level, cat);
+            if (pick != null) allowed.push(pick);
+          }
+        }
+        return { ...c, allowedRaids: allowed };
+      }),
+    }));
+    setRaidList(nextRaids);
+    try { localStorage.setItem("loa_raids", JSON.stringify(nextRaids)); } catch {}
+    saveToLocalStorage(members, migratePartyNames(partyResult, nextRaids));
+  };
+
+  const nextRaidId = () => RAID_LIST.reduce((m, r) => Math.max(m, r.id), 0) + 1;
+
+  const updateSeries = (category, patch) => {
+    saveRaids(RAID_LIST.map(r => {
+      if (r.category !== category) return r;
+      const n = { ...r, ...patch };
+      if (patch.type) { n.reqSup = patch.type === 8 ? 2 : 1; n.reqDlr = patch.type === 8 ? 6 : 3; }
+      n.name = `${n.series} ${raidDiff(n)}`;
+      return n;
+    }));
+  };
+
+  const updateRaid = (id, patch) => {
+    saveRaids(RAID_LIST.map(r => {
+      if (r.id !== id) return r;
+      const n = { ...r, ...patch };
+      n.name = `${n.series || CATEGORY_TITLE[n.category]} ${raidDiff(n)}`;
+      return n;
+    }));
+  };
+
+  const addDifficulty = (category) => {
+    const inCat = RAID_LIST.filter(r => r.category === category);
+    const base = inCat[inCat.length - 1];
+    const lv = Math.max(...inCat.map(r => r.minLevel)) + 10;
+    saveRaids([...RAID_LIST, mkRaid(nextRaidId(), category, base.series || CATEGORY_TITLE[category], "새 난이도", base.type, lv, base.image)]);
+  };
+
+  const addSeries = ({ series, diff, type, minLevel, image }) => {
+    const id = nextRaidId();
+    saveRaids([...RAID_LIST, mkRaid(id, `raid-${id}`, series, diff, type, minLevel, image)]);
+  };
+
+  const removeRaid = (id) => saveRaids(RAID_LIST.filter(r => r.id !== id));
+  const removeSeries = (category) => saveRaids(RAID_LIST.filter(r => r.category !== category));
 
   /* ---------- UI 전용 상태 (화면 전환 / 스플래시 / 배경) ---------- */
   const [screen, setScreen] = useState("home");
@@ -917,6 +1018,7 @@ export default function Home() {
 
   const [clearOwner, setClearOwner] = useState("");
   const [clearTab, setClearTab] = useState("party");
+  const [newRaid, setNewRaid] = useState({ series: "", diff: "노말", type: 8, minLevel: 1700, image: "/raid_1.jpg" });
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 1500);
@@ -1385,7 +1487,8 @@ export default function Home() {
                 ["04", "최적 파티 자동 조합", <><b>파티 편성</b> 탭의 <b>[최적 파티 자동 조합]</b>을 누르면 레벨 조건, 서포터 수, 직업·원정대(부계정 포함) 중복을 고려해 앞 파티부터 꽉 채워 편성합니다. 자리가 없는 캐릭터는 <b>싱글 / 미편성</b>으로 아래에 모입니다.</>],
                 ["05", "보기 방식과 수동 편집", <><b>카드 보기 / 표 요약</b>을 전환하고, 레이드별·공대원별로 걸러 볼 수 있습니다. <b>파티 수동 편집</b>을 켜면 캐릭터를 눌러 선택한 뒤 다른 캐릭터나 빈 자리를 눌러 바꿀 수 있습니다 (표 요약에서도 가능).</>],
                 ["06", "클리어 체크", <><b>클리어 현황 → 파티별 클리어</b>에서 다녀온 파티를 눌러 클리어로 표시하세요. <b>캐릭터별 현황</b>에서는 캐릭터마다 레이드별로 남음 / 편성 / 클리어 상태를 한눈에 볼 수 있습니다.</>],
-                ["07", "모두 함께 보기", <>원정대 등록, 파티 편성, 클리어 체크는 서버에 저장되어 사이트에 접속한 모든 사람에게 몇 초 안에 똑같이 보입니다. 상단 오른쪽 점이 초록색이면 정상적으로 공유 중입니다.</>],
+                ["07", "레이드 관리", <><b>레이드 관리</b> 탭에서 새 레이드나 난이도를 추가하고, 이름·인원(4인/8인)·입장 레벨·배경 이미지를 바꿀 수 있습니다. 새 레이드는 입장 레벨이 되는 캐릭터에게 자동으로 선택되며, 다음 자동 조합부터 반영됩니다.</>],
+                ["08", "모두 함께 보기", <>원정대 등록, 파티 편성, 클리어 체크는 서버에 저장되어 사이트에 접속한 모든 사람에게 몇 초 안에 똑같이 보입니다. 상단 오른쪽 점이 초록색이면 정상적으로 공유 중입니다.</>],
               ].map(([n, title, body]) => (
                 <div key={n} style={{ display: "flex", gap: 14, background: "#1B2027", border: "1px solid #262C34", borderRadius: 12, padding: "12px 14px" }}>
                   <div style={{ fontFamily: mono, fontSize: 12, color: "#C8F24C", flex: "none", paddingTop: 1 }}>{n}</div>
@@ -1861,6 +1964,170 @@ export default function Home() {
               );
             })()}
 
+            {/* RAIDS (레이드 관리) */}
+            {screen === "raids" && (() => {
+              const commitText = (cur, fn) => (e) => {
+                const v = e.target.value.trim();
+                if (!v) { e.target.value = cur; return; }
+                if (v !== cur) fn(v);
+              };
+              const commitLevel = (cur, fn) => (e) => {
+                const v = Math.round(Number(e.target.value));
+                if (!Number.isFinite(v) || v <= 0) { e.target.value = cur; return; }
+                if (v !== cur) fn(v);
+              };
+              const enterBlur = (e) => { if (e.key === "Enter") e.currentTarget.blur(); };
+              const field = { ...input, padding: "8px 10px", fontSize: 13, borderRadius: 9 };
+              const label = { fontSize: 11, color: "#8B949E", marginBottom: 5 };
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14, animation: fadeUp }}>
+                  <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={h1}>레이드 관리</div>
+                      <div style={sub}>자동 조합에 쓰이는 레이드 목록입니다. 새 레이드나 난이도를 추가하고 이름·인원·입장 레벨을 바꿀 수 있으며, 모든 사람에게 같이 적용됩니다. 이미 짜둔 파티는 그대로이고, 다음 자동 조합부터 반영됩니다.</div>
+                    </div>
+                    <button
+                      onClick={() => { if (window.confirm("레이드 목록을 기본값으로 되돌릴까요? 추가하거나 바꾼 레이드가 모두 사라집니다.")) saveRaids(DEFAULT_RAIDS); }}
+                      style={{ ...btnSmall, background: "transparent", color: "#8B949E", padding: "9px 12px" }}
+                    >
+                      기본 목록으로 초기화
+                    </button>
+                  </div>
+
+                  {/* 새 레이드 추가 */}
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const series = newRaid.series.trim();
+                      const diff = newRaid.diff.trim();
+                      const lv = Math.round(Number(newRaid.minLevel));
+                      if (!series || !diff) return alert("레이드 이름과 난이도를 입력해주세요.");
+                      if (!Number.isFinite(lv) || lv <= 0) return alert("입장 레벨을 숫자로 입력해주세요.");
+                      if (RAID_LIST.some(r => (r.series || CATEGORY_TITLE[r.category]) === series)) return alert("같은 이름의 레이드가 이미 있습니다. 아래 목록에서 난이도를 추가해주세요.");
+                      addSeries({ series, diff, type: newRaid.type, minLevel: lv, image: newRaid.image });
+                      setNewRaid(r => ({ ...r, series: "", diff: "노말" }));
+                    }}
+                    style={{ ...card, display: "flex", flexDirection: "column", gap: 12 }}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>새 레이드 추가</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "minmax(200px,2fr) minmax(110px,1fr) 110px 130px minmax(150px,1.2fr) auto", gap: 10, alignItems: "end" }} className="raidForm">
+                      <div>
+                        <div style={label}>레이드 이름</div>
+                        <input value={newRaid.series} onChange={(e) => setNewRaid(r => ({ ...r, series: e.target.value }))} placeholder="예: 3막:칠흑, 폭풍의 밤" style={{ ...field, width: "100%" }} />
+                      </div>
+                      <div>
+                        <div style={label}>첫 난이도</div>
+                        <input value={newRaid.diff} onChange={(e) => setNewRaid(r => ({ ...r, diff: e.target.value }))} placeholder="노말 / 1단계" style={{ ...field, width: "100%" }} />
+                      </div>
+                      <div>
+                        <div style={label}>인원</div>
+                        <select value={newRaid.type} onChange={(e) => setNewRaid(r => ({ ...r, type: Number(e.target.value) }))} style={{ ...field, width: "100%", cursor: "pointer" }}>
+                          <option value={8}>8인</option>
+                          <option value={4}>4인</option>
+                        </select>
+                      </div>
+                      <div>
+                        <div style={label}>입장 레벨</div>
+                        <input type="number" value={newRaid.minLevel} onChange={(e) => setNewRaid(r => ({ ...r, minLevel: e.target.value }))} style={{ ...field, width: "100%", fontFamily: mono }} />
+                      </div>
+                      <div>
+                        <div style={label}>배경 이미지</div>
+                        <select value={newRaid.image} onChange={(e) => setNewRaid(r => ({ ...r, image: e.target.value }))} style={{ ...field, width: "100%", cursor: "pointer" }}>
+                          {RAID_IMAGES.map(([n, src]) => <option key={src} value={src}>{n}</option>)}
+                        </select>
+                      </div>
+                      <button type="submit" style={{ ...btnPrimary, padding: "10px 16px" }}>+ 추가</button>
+                    </div>
+                  </form>
+
+                  {/* 레이드별 목록 */}
+                  {RAID_CATEGORIES.map((cat, ci) => {
+                    const raids = RAID_LIST.filter(r => r.category === cat).sort((a, b) => a.minLevel - b.minLevel);
+                    const head = raids[0];
+                    const series = head.series || CATEGORY_TITLE[cat];
+                    const image = getRaidIllustration(head.id);
+                    return (
+                      <div key={cat} style={{ ...card, padding: 0, overflow: "hidden", animation: fadeUp, animationDelay: `${ci * 40}ms` }}>
+                        <div style={{ position: "relative", overflow: "hidden", padding: "16px 18px", borderBottom: "1px solid #262C34" }}>
+                          <img src={image} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .28 }} />
+                          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg,rgba(20,24,29,.92) 0%,rgba(20,24,29,.6) 100%)" }} />
+                          <div style={{ position: "relative", display: "flex", alignItems: "flex-end", gap: 10, flexWrap: "wrap" }}>
+                            <div style={{ flex: "1 1 260px" }}>
+                              <div style={label}>레이드 이름</div>
+                              <input
+                                key={`s-${cat}-${series}`}
+                                defaultValue={series}
+                                onBlur={commitText(series, v => updateSeries(cat, { series: v }))}
+                                onKeyDown={enterBlur}
+                                style={{ ...field, width: "100%", fontFamily: "'Archivo'", fontWeight: 800, fontSize: 18, background: "rgba(11,13,16,.7)" }}
+                              />
+                            </div>
+                            <div>
+                              <div style={label}>인원</div>
+                              <select value={head.type} onChange={(e) => updateSeries(cat, { type: Number(e.target.value) })} style={{ ...field, cursor: "pointer", background: "rgba(11,13,16,.7)" }}>
+                                <option value={8}>8인 (서폿 2 + 딜러 6)</option>
+                                <option value={4}>4인 (서폿 1 + 딜러 3)</option>
+                              </select>
+                            </div>
+                            <div>
+                              <div style={label}>배경 이미지</div>
+                              <select value={RAID_IMAGES.some(([, src]) => src === image) ? image : ""} onChange={(e) => updateSeries(cat, { image: e.target.value })} style={{ ...field, cursor: "pointer", background: "rgba(11,13,16,.7)" }}>
+                                {!RAID_IMAGES.some(([, src]) => src === image) && <option value="">기본</option>}
+                                {RAID_IMAGES.map(([n, src]) => <option key={src} value={src}>{n}</option>)}
+                              </select>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => { if (window.confirm(`'${series}' 레이드(난이도 ${raids.length}개)를 삭제할까요?`)) removeSeries(cat); }}
+                              style={{ ...btnSmall, background: "rgba(225,66,79,.1)", color: "#E1424F", border: "1px solid rgba(225,66,79,.35)", padding: "9px 12px" }}
+                            >
+                              레이드 삭제
+                            </button>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 12 }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "minmax(140px,1fr) 150px 70px", gap: 10, padding: "0 4px", fontSize: 11, color: "#8B949E" }}>
+                            <div>난이도</div><div>입장 레벨</div><div />
+                          </div>
+                          {raids.map(r => (
+                            <div key={r.id} data-row="1" style={{ display: "grid", gridTemplateColumns: "minmax(140px,1fr) 150px 70px", gap: 10, alignItems: "center", background: "#1B2027", border: "1px solid #262C34", borderRadius: 10, padding: "6px 8px" }}>
+                              <input
+                                key={`d-${r.id}-${raidDiff(r)}`}
+                                defaultValue={raidDiff(r)}
+                                onBlur={commitText(raidDiff(r), v => updateRaid(r.id, { diff: v }))}
+                                onKeyDown={enterBlur}
+                                style={{ ...field, fontWeight: 600 }}
+                              />
+                              <input
+                                key={`l-${r.id}-${r.minLevel}`}
+                                type="number"
+                                defaultValue={r.minLevel}
+                                onBlur={commitLevel(r.minLevel, v => updateRaid(r.id, { minLevel: v }))}
+                                onKeyDown={enterBlur}
+                                style={{ ...field, fontFamily: mono, color: "#C8F24C" }}
+                              />
+                              <button
+                                type="button"
+                                disabled={raids.length === 1}
+                                onClick={() => { if (window.confirm(`'${r.name}' 난이도를 삭제할까요?`)) removeRaid(r.id); }}
+                                title={raids.length === 1 ? "마지막 난이도는 '레이드 삭제'로 지워주세요" : "이 난이도 삭제"}
+                                style={{ ...btnSmall, background: "transparent", color: "#6B737C", opacity: raids.length === 1 ? .4 : 1 }}
+                              >
+                                삭제
+                              </button>
+                            </div>
+                          ))}
+                          <button type="button" onClick={() => addDifficulty(cat)} style={{ ...btnSmall, borderStyle: "dashed", background: "transparent", color: "#A8B0B9", padding: "9px 10px", marginTop: 2 }}>
+                            + 난이도 추가
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
             {/* PARTIES */}
             {screen === "parties" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 14, animation: fadeUp }}>
@@ -1908,7 +2175,7 @@ export default function Home() {
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "#14181D", border: "1px solid #262C34", borderRadius: 14, padding: "10px 12px" }}>
                   <div data-scrollx="1" style={{ display: "flex", gap: 6, minWidth: 0 }}>
                     <button onClick={() => { setViewMode("all"); setFilterTarget(""); }} style={pill(viewMode === "all")}>전체 보기</button>
-                    <button onClick={() => { setViewMode("raid"); setFilterTarget(RAID_LIST[0].name); }} style={pill(viewMode === "raid")}>레이드별</button>
+                    <button onClick={() => { setViewMode("raid"); setFilterTarget(RAID_LIST[0]?.name || ""); }} style={pill(viewMode === "raid")}>레이드별</button>
                     <button onClick={() => { setViewMode("owner"); setFilterTarget(memberList[0]?.owner || ""); }} style={pill(viewMode === "owner")}>공대원별</button>
                     <button onClick={() => { setViewMode("single"); setFilterTarget(""); }} style={pill(viewMode === "single")}>싱글 / 미편성</button>
                   </div>

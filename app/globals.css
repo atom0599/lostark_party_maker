@@ -47,8 +47,7 @@ button:disabled { cursor: default; }
   .navRow { order: 2; flex: 1 1 100% !important; }
   .brandLabel { display: none; }
   .guideBtn { padding: 7px 11px !important; }
-  .guideBtn .btnLabel, .syncPill .btnLabel, .adminBtn .btnLabel, .nameBtn .btnLabel { display: none; }
-  .nameBtn .btnIcon { display: inline; }
+  .guideBtn .btnLabel, .syncPill .btnLabel, .adminBtn .btnLabel { display: none; }
   .nameBtn { padding: 7px 11px !important; }
   .logRow { grid-template-columns: 1fr !important; gap: 6px !important; }
   .adminBtn .btnIcon { display: inline; }

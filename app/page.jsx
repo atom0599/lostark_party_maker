@@ -1611,32 +1611,48 @@ export default function Home() {
   };
 
   // 5. 파티 편성을 디스코드/카톡에 붙여넣기 좋은 글로 만든다 (지금 보이는 목록 기준)
+  //    레이드별로 묶고, 한 줄에 캐릭터 하나씩 (서폿 먼저) 적어 한눈에 보이게 한다
   const [copied, setCopied] = useState(false);
   const partyText = (list) => {
     const d = new Date();
+    const isSupM = (m) => HYBRID_CLASSES.includes(m.className) && m.role === "서포터";
     const who = (m) => {
-      const sup = HYBRID_CLASSES.includes(m.className) && m.role === "서포터";
       const real = realNameOf(m.owner);
-      return `${sup ? "[서폿] " : ""}${m.charName}(${m.className}${real ? `·${real}` : ""})`;
+      return `${isSupM(m) ? "🛡️" : "⚔️"} ${m.charName} · ${m.className}${real ? ` (${real})` : ""}`;
     };
-    const lines = [`📋 로아 파티 편성 (${d.getMonth() + 1}/${d.getDate()})`, ""];
+    const sorted = (arr) => [...(arr || [])].sort((a, b) => isSupM(b) - isSupM(a));
+    const bar = "━━━━━━━━━━━━━━";
+    const lines = [`📋 로아 파티 편성 · ${d.getMonth() + 1}/${d.getDate()}(${"일월화수목금토"[d.getDay()]})`];
+    const groups = [];
     for (const p of list) {
-      const single = isSingleParty(p);
-      const n = (p.members || []).length;
-      if (single) {
-        lines.push(`[미편성] ${p.baseRaidName || p.raidName} — ${n}명`);
-        lines.push(`  ${(p.members || []).map(who).join(", ")}`);
-      } else {
-        const avg = n ? Math.floor((p.members || []).reduce((a, m) => a + (m.combatPower || 0), 0) / n) : 0;
-        lines.push(`[파티 ${p.partyNum}] ${p.raidName} — ${n}/${p.type}명 · 평균 ${avg.toLocaleString()}${p.cleared ? " · ✓클리어" : ""}`);
+      const key = p.baseRaidName || p.raidName;
+      let g = groups.find((x) => x.key === key);
+      if (!g) groups.push((g = { key, parties: [] }));
+      g.parties.push(p);
+    }
+    for (const g of groups) {
+      lines.push("", bar, `🔥 ${g.key}`, bar);
+      for (const p of g.parties) {
+        const ms = p.members || [];
+        const n = ms.length;
+        lines.push("");
+        if (isSingleParty(p)) {
+          lines.push(`▷ 미편성 (${n}명)`);
+          sorted(ms).forEach((m) => lines.push(`   ${who(m)}`));
+          continue;
+        }
+        const avg = n ? Math.floor(ms.reduce((a, m) => a + (m.combatPower || 0), 0) / n) : 0;
+        lines.push(`▶ 파티 ${p.partyNum}  |  ${n}/${p.type}명  |  평균 ${avg.toLocaleString()}${p.cleared ? "  |  ✅ 클리어" : ""}`);
         if (p.type === 8) {
-          lines.push(`  1파티: ${(p.g1 || []).map(who).join(", ") || "-"}`);
-          lines.push(`  2파티: ${(p.g2 || []).map(who).join(", ") || "-"}`);
+          [["1파티", p.g1], ["2파티", p.g2]].forEach(([label, grp]) => {
+            lines.push(`  [${label}]`);
+            if (!(grp || []).length) lines.push("   -");
+            sorted(grp).forEach((m) => lines.push(`   ${who(m)}`));
+          });
         } else {
-          lines.push(`  ${(p.members || []).map(who).join(", ")}`);
+          sorted(ms).forEach((m) => lines.push(`   ${who(m)}`));
         }
       }
-      lines.push("");
     }
     return lines.join("\n").trim();
   };
@@ -1706,7 +1722,7 @@ export default function Home() {
       </div>
 
       {/* 내 이름 설정 */}
-      {nameOpen && (
+      {nameOpen && isAdmin && (
         <div onClick={() => setNameOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 97, background: "rgba(5,7,9,.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <form onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); saveActorName(); }} style={{ width: "min(340px,100%)", background: "#14181D", border: "1px solid #2C333C", borderRadius: 18, padding: 20, display: "flex", flexDirection: "column", gap: 12, animation: "popIn .3s cubic-bezier(.2,.7,.3,1) both" }}>
             <div style={{ fontSize: 15, fontWeight: 700 }}>내 이름</div>
@@ -1756,7 +1772,7 @@ export default function Home() {
                 ["05", "보기 방식과 수동 편집", <><b>카드 보기 / 표 요약</b>을 전환하고, 레이드별·공대원별로 걸러 볼 수 있습니다. <b>파티 수동 편집</b>을 켜면 캐릭터를 눌러 선택한 뒤 다른 캐릭터나 빈 자리를 눌러 바꿀 수 있습니다 (표 요약에서도 가능). <b>📋 텍스트 복사</b>를 누르면 지금 보이는 파티 목록을 디스코드·카톡에 붙여넣기 좋은 글로 복사합니다.</>],
                 ["06", "클리어 체크", <><b>클리어 현황 → 파티별 클리어</b>에서 다녀온 파티를 눌러 클리어로 표시하세요. <b>캐릭터별 현황</b>에서는 캐릭터마다 레이드별로 남음 / 편성 / 클리어 상태를 한눈에 볼 수 있습니다. 수요일 리셋 후에는 <b>↺ 주간 초기화</b>로 클리어 표시와 클리어 체크를 한 번에 되돌리세요.</>],
                 ["07", "레이드 관리", <><b>레이드 관리</b> 탭에서 새 레이드나 난이도를 추가하고, 이름·인원(4인/8인)·입장 레벨·배경 이미지를 바꿀 수 있습니다. 배경은 <b>📁 내 PC</b>로 내 컴퓨터 이미지를 올릴 수도 있습니다. 새 레이드는 입장 레벨이 되는 캐릭터에게 자동으로 선택되며, 다음 자동 조합부터 반영됩니다. 레이드·난이도 삭제와 목록 초기화는 상단 <b>관리자</b> 로그인 후에만 할 수 있습니다.</>],
-                ["08", "모두 함께 보기", <>원정대 등록, 파티 편성, 클리어 체크는 서버에 저장되어 사이트에 접속한 모든 사람에게 몇 초 안에 똑같이 보입니다. 상단 오른쪽 점이 초록색이면 정상적으로 공유 중입니다. <b>👤</b> 버튼으로 내 이름을 정해두면, 관리자가 보는 <b>변경 기록</b>에 그 이름으로 남습니다.</>],
+                ["08", "모두 함께 보기", <>원정대 등록, 파티 편성, 클리어 체크는 서버에 저장되어 사이트에 접속한 모든 사람에게 몇 초 안에 똑같이 보입니다. 상단 오른쪽 점이 초록색이면 정상적으로 공유 중입니다. 누가 무엇을 바꿨는지는 관리자가 <b>변경 기록</b>에서 확인합니다.</>],
               ].map(([n, title, body]) => (
                 <div key={n} style={{ display: "flex", gap: 14, background: "#1B2027", border: "1px solid #262C34", borderRadius: 12, padding: "12px 14px" }}>
                   <div style={{ fontFamily: mono, fontSize: 12, color: "#C8F24C", flex: "none", paddingTop: 1 }}>{n}</div>
@@ -1905,12 +1921,13 @@ export default function Home() {
             })()}
             <button
               className="nameBtn"
-              onClick={() => { setNameDraft(actorName); setNameOpen(true); }}
-              title="변경 기록에 남을 내 이름"
-              style={{ background: "transparent", color: actorName ? "#C6CDD4" : "#8B949E", border: "1px solid rgba(255,255,255,.14)", borderRadius: 999, padding: "7px 13px", fontSize: 12, cursor: "pointer", whiteSpace: "nowrap", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis" }}
+              disabled={!isAdmin}
+              onClick={() => { if (!isAdmin) return; setNameDraft(actorName); setNameOpen(true); }}
+              title={isAdmin ? `변경 기록에 남을 내 이름${actorName ? ` (${actorName})` : ""}` : "관리자만 사용할 수 있습니다"}
+              aria-label="내 이름 설정"
+              style={{ background: "transparent", color: actorName ? "#C6CDD4" : "#8B949E", border: "1px solid rgba(255,255,255,.14)", borderRadius: 999, padding: "7px 11px", fontSize: 12, cursor: isAdmin ? "pointer" : "not-allowed", opacity: isAdmin ? 1 : .4, whiteSpace: "nowrap" }}
             >
-              <span className="btnIcon">👤</span>
-              <span className="btnLabel">👤 {actorName || "이름 설정"}</span>
+              👤
             </button>
             <button
               className="adminBtn"
@@ -2271,7 +2288,7 @@ export default function Home() {
                 <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
                   <div>
                     <div style={h1}>변경 기록</div>
-                    <div style={sub}>누가 언제 무엇을 바꿨는지 최근 400건까지 보관합니다. 관리자만 볼 수 있으며, 이름은 각자 상단 👤 버튼에서 정한 이름입니다.</div>
+                    <div style={sub}>누가 언제 무엇을 바꿨는지 최근 400건까지 보관합니다. 관리자만 볼 수 있으며, 관리자는 상단 👤 버튼에서 기록에 남을 이름을 정할 수 있습니다.</div>
                   </div>
                   <button onClick={loadLog} style={{ ...btnGhost, padding: "9px 14px", fontSize: 12 }}>↻ 새로고침</button>
                 </div>

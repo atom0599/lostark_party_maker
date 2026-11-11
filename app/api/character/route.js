@@ -29,6 +29,10 @@ export async function GET(request) {
     }
     
     const siblings = await sibRes.json();
+    // 없는 캐릭터면 로스트아크 API 가 200 + null 을 돌려준다
+    if (!Array.isArray(siblings)) {
+      return NextResponse.json({ error: '캐릭터를 찾을 수 없습니다. 이름을 확인해주세요.' }, { status: 404 });
+    }
 
     const highLevelChars = siblings.filter(char => {
       const rawLevel = char.ItemMaxLevel || char.ItemAvgLevel || "0";

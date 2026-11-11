@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getJSON, createJSON } from "../../../lib/store";
+import { IMG_PREFIX } from "../../../lib/images";
 
 // 사용자가 올린 레이드 배경 이미지. 공유 상태(/api/state)는 2초마다 오가므로
 // 이미지는 따로 저장하고, 레이드에는 이 주소(/api/image?id=...)만 넣는다.
 export const dynamic = "force-dynamic";
 
-const PREFIX = "loa:party-maker:img:";
+const PREFIX = IMG_PREFIX;
 const MAX_CHARS = 3_000_000; // base64 기준 약 2.2MB
 const DATA_URL = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/;
 

@@ -2,144 +2,18 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-
-const NAV = [["home", "홈"], ["roster", "원정대"], ["clear", "클리어 현황"], ["parties", "파티 편성"], ["raids", "레이드 관리"]];
-// 로스트아크 공식 아트웍 지역 일러스트 (CC BY-NC-SA 4.0, © Smilegate RPG)
-const BG_SEQ = [
-  "/regions/elgacia.jpg", "/regions/aldebaran.jpg", "/regions/kadarum.jpg", "/regions/fleche.jpg",
-  "/regions/punika.jpg", "/regions/voldis.jpg", "/regions/south_vern.jpg",
-];
-const HYBRID_CLASSES = ["바드", "홀리나이트", "도화가", "발키리"];
-const DLR_COLOR = "#FF4B57";
-const SUP_COLOR = "#4ADE80";
-const G1_COLOR = "#4C9AFF";
-const G2_COLOR = "#FF8A4C";
-const SUB_COLOR = "#B478FF";
-
-// 서포터 = 초록 십자가, 딜러 = 칼
-function RoleIcon({ sup, size = 11 }) {
-  if (sup) {
-    return (
-      <svg width={size} height={size} viewBox="0 0 12 12" aria-label="서포터" style={{ flex: "none" }}>
-        <path d="M4.4 .8h3.2v3.6h3.6v3.2H7.6v3.6H4.4V7.6H.8V4.4h3.6z" fill={SUP_COLOR} />
-      </svg>
-    );
-  }
-  return (
-    <svg width={size} height={size} viewBox="0 0 16 16" aria-label="딜러" fill="none" stroke={DLR_COLOR} strokeWidth="1.9" strokeLinecap="round" style={{ flex: "none" }}>
-      <path d="M14.5 1.5 L6.8 9.2" />
-      <path d="M14.5 1.5 L12.2 2.1 M14.5 1.5 L13.9 3.8" />
-      <path d="M4.6 7.4 L8.6 11.4" />
-      <path d="M5.6 10.4 L2.2 13.8" />
-    </svg>
-  );
-}
-
-// 기본 레이드 목록. 실제 목록은 '레이드 관리' 탭에서 수정되며 서버에 공유 저장된다.
-// category: 같은 레이드(난이도 묶음)를 구분하는 키 / series: 레이드 이름 / diff: 난이도(단계)
-const mkRaid = (id, category, series, diff, type, minLevel, image) => ({
-  id, category, series, diff, name: `${series} ${diff}`, type, minLevel,
-  reqSup: type === 8 ? 2 : 1, reqDlr: type === 8 ? 6 : 3, image,
-});
-const DEFAULT_RAIDS = [
-  mkRaid(1, "벨가르딘", "죽음의 계율자, 벨가르딘", "노말", 8, 1750, "/raid_5.jpg"),
-  mkRaid(2, "벨가르딘", "죽음의 계율자, 벨가르딘", "하드", 8, 1770, "/raid_5.jpg"),
-  mkRaid(3, "벨가르딘", "죽음의 계율자, 벨가르딘", "나이트메어", 8, 1780, "/raid_5.jpg"),
-  mkRaid(4, "지평", "지평의 성당", "1단계", 4, 1700, "/raid_4.jpg"),
-  mkRaid(5, "지평", "지평의 성당", "2단계", 4, 1720, "/raid_4.jpg"),
-  mkRaid(6, "지평", "지평의 성당", "3단계", 4, 1750, "/raid_4.jpg"),
-  mkRaid(7, "세르카", "고통의 마녀, 세르카", "노말", 4, 1710, "/raid_3.jpg"),
-  mkRaid(8, "세르카", "고통의 마녀, 세르카", "하드", 4, 1730, "/raid_3.jpg"),
-  mkRaid(9, "세르카", "고통의 마녀, 세르카", "나이트메어", 4, 1740, "/raid_3.jpg"),
-  mkRaid(10, "4막", "4막:파멸의 성채", "노말", 8, 1700, "/raid_1.jpg"),
-  mkRaid(11, "4막", "4막:파멸의 성채", "하드", 8, 1720, "/raid_1.jpg"),
-  mkRaid(12, "종막", "종막:최후의 날", "노말", 8, 1710, "/raid_2.jpg"),
-  mkRaid(13, "종막", "종막:최후의 날", "하드", 8, 1730, "/raid_2.jpg"),
-];
-
-// 레이드 배경으로 고를 수 있는 이미지
-const RAID_IMAGES = [
-  ["벨가르딘", "/raid_5.jpg"], ["지평의 성당", "/raid_4.jpg"], ["세르카", "/raid_3.jpg"],
-  ["파멸의 성채", "/raid_1.jpg"], ["최후의 날", "/raid_2.jpg"],
-  ["엘가시아", "/regions/elgacia.jpg"], ["알데바란의 바다", "/regions/aldebaran.jpg"], ["카다룸 제도", "/regions/kadarum.jpg"],
-  ["플레체", "/regions/fleche.jpg"], ["파푸니카", "/regions/punika.jpg"], ["볼다이크", "/regions/voldis.jpg"], ["베른 남부", "/regions/south_vern.jpg"],
-];
-
-// 저장된 레이드 목록이 올바른 형태인지
-const validRaids = (raids) => Array.isArray(raids) && raids.length > 0
-  && raids.every(r => r && typeof r.id === "number" && r.category && r.name && (r.type === 4 || r.type === 8) && typeof r.minLevel === "number");
-
-// 파티 결과의 레이드 이름을 현재 레이드 목록의 이름으로 맞춘다 (예전 이름 / 레이드 관리에서 이름 변경 시)
-const migratePartyNames = (parties, raids) => parties.map(p => {
-  const raid = raids.find(r => r.id === p.originalRaidId);
-  if (!raid || !p.baseRaidName || p.baseRaidName === raid.name) return p;
-  return { ...p, raidName: p.raidName.replace(p.baseRaidName, raid.name), baseRaidName: raid.name };
-});
-
-const CLASS_ICONS = {
-  "버서커": "/icons/Berserker.svg",
-  "워로드": "/icons/Warlord.svg",
-  "디스트로이어": "/icons/Destroyer.svg",
-  "홀리나이트": "/icons/Holyknight.svg",
-  "슬레이어": "/icons/Slayer.svg",
-  "배틀마스터": "/icons/Battlemaster.svg",
-  "인파이터": "/icons/Infighter.svg",
-  "기공사": "/icons/Soulmaster.svg",
-  "창술사": "/icons/Lancemaster.svg",
-  "스트라이커": "/icons/Striker.svg",
-  "브레이커": "/icons/Breaker.svg",
-  "데빌헌터": "/icons/Devilhunter.svg",
-  "블래스터": "/icons/Blaster.svg",
-  "호크아이": "/icons/Hawkeye.svg",
-  "스카우터": "/icons/Scouter.svg",
-  "건슬링어": "/icons/Gunslinger.svg",
-  "바드": "/icons/Bard.svg",
-  "서머너": "/icons/Summoner.svg",
-  "아르카나": "/icons/Arcana.svg",
-  "소서리스": "/icons/Elementalmaster.svg",
-  "블레이드": "/icons/Blade.svg",
-  "데모닉": "/icons/Demonic.svg",
-  "리퍼": "/icons/Reaper.svg",
-  "소울이터": "/icons/Souleater.svg",
-  "도화가": "/icons/Artist.svg",
-  "기상술사": "/icons/Aeromancer.svg",
-  "환수사": "/icons/Wildsoul.svg",
-  "차원술사": "/icons/dimension_master.svg",
-  "발키리": "/icons/Valkyrie.svg",
-  "가디언나이트": "/icons/Dragon_knight.svg",
-  // 뿌리 클래스(기본 직업) 매핑
-  "전사": "/icons/warrior.svg",
-  "전사(여)": "/icons/warrior_female.svg",
-  "무도가": "/icons/fighter.svg",
-  "무도가(남)": "/icons/fighter_male.svg",
-  "헌터": "/icons/hunter.svg",
-  "건너(여)": "/icons/hunter_female.svg",
-  "마법사": "/icons/magician.svg",
-  "암살자": "/icons/assassin.svg",
-  "스페셜리스트": "/icons/specialist.svg"
-};
-
-// 3-way 병합: base(마지막으로 서버와 맞췄던 상태) 대비 내가 바꾼 항목은 내 것을, 안 바꾼 항목은 서버 것을 쓴다.
-// 항목 단위 = 원정대(owner) / 파티(id). 순서는 내가 순서를 바꿨으면 내 순서, 아니면 서버 순서.
-const merge3 = (base, local, server, keyOf) => {
-  const toMap = (arr) => new Map((arr || []).map(x => [keyOf(x), x]));
-  const b = toMap(base), l = toMap(local), sv = toMap(server);
-  const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
-  const pick = (k) => (same(l.get(k), b.get(k)) ? sv.get(k) : l.get(k));
-  const localOrderChanged = !same((local || []).map(keyOf), (base || []).map(keyOf));
-  const order = localOrderChanged
-    ? [...(local || []).map(keyOf), ...(server || []).map(keyOf)]
-    : [...(server || []).map(keyOf), ...(local || []).map(keyOf)];
-  const seen = new Set();
-  const out = [];
-  for (const k of order) {
-    if (seen.has(k)) continue;
-    seen.add(k);
-    const v = pick(k);
-    if (v !== undefined) out.push(v);
-  }
-  return out;
-};
+import { NAV, BG_SEQ, HYBRID_CLASSES, DLR_COLOR, SUP_COLOR, G1_COLOR, G2_COLOR, SUB_COLOR, mkRaid, DEFAULT_RAIDS, RAID_IMAGES, CLASS_ICONS } from "./_lib/constants";
+import { validRaids, migratePartyNames } from "./_lib/sharedState";
+import { buildParties, movePartySlot, typeRank } from "./_lib/partyBuilder";
+import { pill, card, h1, sub, input, selectStyle, btnPrimary, btnGhost, btnSmall, mono, fadeUp } from "./_lib/styles";
+import RoleIcon from "./_components/RoleIcon";
+import RaidNoticesModal from "./_components/RaidNoticesModal";
+import NameModal from "./_components/NameModal";
+import AdminLoginModal from "./_components/AdminLoginModal";
+import GuideModal from "./_components/GuideModal";
+import CharRaidConfigModal from "./_components/CharRaidConfigModal";
+import useAdmin from "./_hooks/useAdmin";
+import useSharedSync from "./_hooks/useSharedSync";
 
 export default function Home() {
   const [searchName, setSearchName] = useState("");
@@ -158,8 +32,6 @@ export default function Home() {
   const [swapTarget, setSwapTarget] = useState(null);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
-  // 변경 기록에 남길 동작 이름 (다음 서버 저장 때 함께 전송)
-  const logAction = (label) => { pendingActions.current = [...pendingActions.current, label].slice(-10); };
   // 변경 기록에 표시될 내 이름 (브라우저마다 저장)
   const [actorName, setActorName] = useState("");
   const [nameOpen, setNameOpen] = useState(false);
@@ -188,8 +60,22 @@ export default function Home() {
 
   // 레이드 목록 (레이드 관리 탭에서 수정, 서버 공유). 아래 로직은 모두 이 목록을 기준으로 동작한다.
   const [raidList, setRaidList] = useState(DEFAULT_RAIDS);
+
+  // 관리자 로그인 · 서버 공유 동기화 (app/_hooks)
+  const admin = useAdmin();
+  const { isAdmin, tokenRef: adminTokenRef } = admin;
+  const { syncStatus, logAction, actorRef } = useSharedSync(
+    { memberList, partyResult, raidList, setMemberList, setPartyResult, setRaidList },
+    adminTokenRef,
+    admin.recheck,
+  );
+
   const RAID_LIST = raidList;
-  const RAID_CATEGORIES = [...new Set(RAID_LIST.map(r => r.category))];
+  // 레이드 종류 순서: 4인 레이드가 먼저, 그 안에서는 레이드 목록 순서
+  const RAID_CATEGORIES = [...new Set(RAID_LIST.map(r => r.category))]
+    .map((c, i) => ({ c, i, rank: typeRank(RAID_LIST.find(r => r.category === c)) }))
+    .sort((a, b) => (a.rank - b.rank) || (a.i - b.i))
+    .map(x => x.c);
   const CATEGORY_TITLE = Object.fromEntries(RAID_CATEGORIES.map(c => [c, RAID_LIST.find(r => r.category === c).series || c]));
   const raidDiff = (raid) => raid.diff || raid.name.slice((CATEGORY_TITLE[raid.category] || "").length).trim();
 
@@ -215,6 +101,11 @@ export default function Home() {
     localStorage.setItem("loa_members", JSON.stringify(newMembers));
     localStorage.setItem("loa_party_result", JSON.stringify(newResult));
   };
+
+  // 비동기 작업(원정대 조회·갱신)이 끝난 시점의 최신 목록.
+  // 조회하는 동안 다른 사람의 변경이 들어올 수 있으므로, 시작 시점 값으로 덮어쓰지 않도록 이걸 기준으로 저장한다.
+  const latestRef = useRef({ memberList, partyResult });
+  useEffect(() => { latestRef.current = { memberList, partyResult }; }, [memberList, partyResult]);
 
   // 부계정으로 연결된 원정대는 같은 사람으로 취급 -> 최상위(본계정) 소유자명을 반환
   const rootOwner = (owner) => {
@@ -259,18 +150,25 @@ export default function Home() {
 
   const handleSearchCharacter = async (e) => {
     e.preventDefault();
-    if (!searchName.trim()) return;
+    const ownerName = searchName.trim();
+    if (!ownerName) return;
+    if (memberList.some(m => m.owner === ownerName)) {
+      alert(`'${ownerName}' 원정대는 이미 등록되어 있습니다. 정보를 새로 받으려면 원정대 갱신을 눌러주세요.`);
+      return;
+    }
 
     setLoading(true);
     try {
-      const res = await fetch(`/api/character?name=${encodeURIComponent(searchName)}`);
+      const res = await fetch(`/api/character?name=${encodeURIComponent(ownerName)}`);
       const data = await res.json();
 
-      if (res.ok && Array.isArray(data)) {
+      if (res.ok && Array.isArray(data) && data.length === 0) {
+        alert("1700 레벨 이상인 캐릭터가 없어 등록하지 못했습니다.");
+      } else if (res.ok && Array.isArray(data)) {
         const categories = [...new Set(RAID_LIST.map(r => r.category))];
         
         const newMember = {
-          owner: searchName,
+          owner: ownerName,
           realName: searchRealName.trim(),
           characters: data.map(char => {
             const defaultAllowed = categories.map(cat => {
@@ -292,7 +190,12 @@ export default function Home() {
             };
           })
         };
-        saveToLocalStorage([...memberList, newMember], partyResult);
+        const { memberList: curMembers, partyResult: curParties } = latestRef.current;
+        if (curMembers.some(m => m.owner === ownerName)) {
+          alert(`'${ownerName}' 원정대는 방금 다른 사람이 등록했습니다.`);
+          return;
+        }
+        saveToLocalStorage([...curMembers, newMember], curParties);
         setSearchName("");
         setSearchRealName("");
       } else {
@@ -310,12 +213,25 @@ export default function Home() {
   };
 
   // API 로 받아온 원정대 정보(data)를 원정대 목록과 이미 편성된 파티에 반영한 결과를 돌려준다
+  // · 전투력은 갱신 전보다 낮아졌으면 예전(더 높은) 값을 유지한다
+  // · 레벨이 올라 새로 갈 수 있게 된 레이드는 notices 로 돌려준다
   const applyRefreshData = (members, parties, ownerName, data) => {
     const categories = [...new Set(RAID_LIST.map(r => r.category))];
+    const notices = [];
+    const bestCP = new Map(); // charName → 유지할 전투력
     const updatedMembers = members.map(m => {
       if (m.owner === ownerName) {
         const newChars = data.map(char => {
           const existingChar = m.characters.find(c => c.charName === char.CharacterName);
+          const combatPower = Math.max(Number(existingChar?.combatPower) || 0, Number(char.CombatPower) || 0);
+          bestCP.set(char.CharacterName, combatPower);
+          const oldLevel = existingChar ? Number(existingChar.level) || 0 : null;
+          const unlocked = RAID_LIST
+            .filter(r => char.ItemLevel >= r.minLevel && (oldLevel === null || oldLevel < r.minLevel))
+            .sort((a, b) => a.minLevel - b.minLevel);
+          if (unlocked.length) {
+            notices.push({ owner: ownerName, charName: char.CharacterName, className: char.CharacterClassName, isNew: !existingChar, from: oldLevel, to: char.ItemLevel, raids: unlocked.map(r => ({ name: r.name, minLevel: r.minLevel })) });
+          }
           const defaultAllowed = categories.map(cat => {
             const raidsInCat = RAID_LIST.filter(r => r.category === cat && char.ItemLevel >= r.minLevel);
             if (raidsInCat.length === 0) return null;
@@ -327,8 +243,9 @@ export default function Home() {
             charName: char.CharacterName,
             className: char.CharacterClassName,
             level: char.ItemLevel,
-            combatPower: char.CombatPower,
-            characterImage: char.CharacterImage,
+            combatPower,
+            // 프로필 조회가 실패하면 이미지가 비어서 오므로 기존 이미지를 유지
+            characterImage: char.CharacterImage || existingChar?.characterImage || null,
             role: existingChar ? existingChar.role : (["바드", "홀리나이트", "도화가", "발키리"].includes(char.CharacterClassName) ? "서포터" : "딜러"),
             isExcluded: existingChar ? existingChar.isExcluded : false,
             allowedRaids: existingChar ? existingChar.allowedRaids : defaultAllowed
@@ -344,7 +261,8 @@ export default function Home() {
     const refreshChar = (c) => {
       if (c.owner !== ownerName || !fresh.has(c.charName)) return c;
       const f = fresh.get(c.charName);
-      return { ...c, level: f.ItemLevel, combatPower: f.CombatPower, characterImage: f.CharacterImage || c.characterImage };
+      const combatPower = Math.max(bestCP.get(c.charName) || 0, Number(c.combatPower) || 0, Number(f.CombatPower) || 0);
+      return { ...c, level: f.ItemLevel, combatPower, characterImage: f.CharacterImage || c.characterImage };
     };
     const updatedParties = parties.map(p => ({
       ...p,
@@ -352,18 +270,26 @@ export default function Home() {
       g1: (p.g1 || []).map(refreshChar),
       g2: (p.g2 || []).map(refreshChar),
     }));
-    return { members: updatedMembers, parties: updatedParties };
+    return { members: updatedMembers, parties: updatedParties, notices };
   };
+
+  // 갱신 후 새로 갈 수 있게 된 레이드 알림
+  const [raidNotices, setRaidNotices] = useState(null);
 
   const handleRefreshMember = async (ownerName) => {
     setLoading(true);
     try {
       const res = await fetch(`/api/character?name=${encodeURIComponent(ownerName)}`);
       const data = await res.json();
-      if (res.ok && Array.isArray(data)) {
-        const next = applyRefreshData(memberList, partyResult, ownerName, data);
+      if (res.ok && Array.isArray(data) && data.length === 0) {
+        // 점검 중이거나 조회가 비정상일 때 빈 목록이 오면 캐릭터가 모두 지워지므로 갱신하지 않는다
+        alert("조회된 캐릭터가 없어 갱신하지 않았습니다. (게임 점검 중일 수 있습니다)");
+      } else if (res.ok && Array.isArray(data)) {
+        const { memberList: curMembers, partyResult: curParties } = latestRef.current;
+        const next = applyRefreshData(curMembers, curParties, ownerName, data);
         logAction(`원정대 갱신: ${ownerName}`);
         saveToLocalStorage(next.members, next.parties);
+        if (next.notices.length) setRaidNotices(next.notices);
       } else {
         alert("원정대 갱신에 실패했습니다.");
       }
@@ -380,24 +306,31 @@ export default function Home() {
     if (!memberList.length || refreshAllProgress) return;
     setLoading(true);
     const owners = memberList.map(m => m.owner);
-    let members = memberList, parties = partyResult;
+    const fetched = []; // [owner, data] — 조회만 먼저 하고, 반영은 끝난 시점의 최신 목록에 한 번에
     const failed = [];
+    const notices = [];
     for (let k = 0; k < owners.length; k++) {
       setRefreshAllProgress({ done: k, total: owners.length });
       try {
         const res = await fetch(`/api/character?name=${encodeURIComponent(owners[k])}`);
         const data = await res.json();
-        if (res.ok && Array.isArray(data)) ({ members, parties } = applyRefreshData(members, parties, owners[k], data));
+        if (res.ok && Array.isArray(data) && data.length > 0) fetched.push([owners[k], data]);
         else failed.push(owners[k]);
       } catch {
         failed.push(owners[k]);
       }
       if (k < owners.length - 1) await new Promise(r => setTimeout(r, 400));
     }
+    let { memberList: members, partyResult: parties } = latestRef.current;
+    for (const [owner, data] of fetched) {
+      const next = applyRefreshData(members, parties, owner, data);
+      members = next.members; parties = next.parties; notices.push(...next.notices);
+    }
     logAction(`전체 원정대 갱신 (${owners.length - failed.length}/${owners.length})`);
     saveToLocalStorage(members, parties);
     setRefreshAllProgress(null);
     setLoading(false);
+    if (notices.length) setRaidNotices(notices);
     if (failed.length) alert(`다음 원정대는 갱신하지 못했습니다: ${failed.join(", ")}`);
   };
 
@@ -495,176 +428,6 @@ export default function Home() {
     }
   };
 
-  // 직업/원정대(부계정) 중복 없이 배치하되,
-  // 1순위: 앞 파티부터 최대한 꽉 채운다 (예: 4인 레이드 딜러 4명 → 2+2 가 아니라 3+1)
-  // 2순위: 그 안에서 남는(미편성) 캐릭터를 최소화한다.
-  const packRaid = (sups, dlrs, type) => {
-    const maxSup = type === 8 ? 2 : 1;
-    const maxDlr = type === 8 ? 6 : 3;
-    const all = [...sups, ...dlrs];
-    if (all.length < 2) return { parties: [], leftovers: [...all] };
-
-    const freq = {};
-    const ownerFreq = {};
-    all.forEach(c => {
-      freq[c.className] = (freq[c.className] || 0) + 1;
-      ownerFreq[c.ownerGroup] = (ownerFreq[c.ownerGroup] || 0) + 1;
-    });
-
-    // 같은 직업/같은 원정대가 많은 캐릭터를 먼저 배치(자리 선점) → 그다음 전투력 낮은 순
-    const prio = (a, b) =>
-      (freq[b.className] - freq[a.className]) ||
-      (ownerFreq[b.ownerGroup] - ownerFreq[a.ownerGroup]) ||
-      (a.combatPower - b.combatPower);
-    const sortedSups = [...sups].sort(prio);
-    const sortedDlrs = [...dlrs].sort(prio);
-
-    // mode: "fill" = 가장 꽉 찬 파티부터 채움(풀파티 우선), "spread" = 가장 빈 파티부터(전원 편성 보조)
-    const tryPack = (n, mode) => {
-      const parties = Array.from({ length: n }, () => ({
-        members: [], owners: new Set(), classes: new Set(), sup: 0, dlr: 0,
-      }));
-
-      const place = (c, isSup) => {
-        const fit = parties.filter(p =>
-          p.members.length < type &&
-          (isSup ? p.sup < maxSup : p.dlr < maxDlr) &&
-          !p.owners.has(c.ownerGroup) &&
-          !p.classes.has(c.className)
-        );
-        if (fit.length === 0) return false;
-        fit.sort((a, b) => mode === "fill"
-          ? b.members.length - a.members.length
-          : a.members.length - b.members.length);
-        const p = fit[0];
-        p.members.push(c);
-        p.owners.add(c.ownerGroup);
-        p.classes.add(c.className);
-        if (isSup) p.sup++; else p.dlr++;
-        return true;
-      };
-
-      const rest = [];
-      for (const c of sortedSups) if (!place(c, true)) rest.push(c);
-      for (const c of sortedDlrs) if (!place(c, false)) rest.push(c);
-
-      const good = [];
-      for (const p of parties) {
-        if (p.members.length >= 2) good.push(p.members);
-        else rest.push(...p.members);
-      }
-      good.sort((a, b) => b.length - a.length); // 가장 꽉 찬 파티가 1번
-      return {
-        parties: good,
-        leftovers: rest,
-        placed: all.length - rest.length,
-        sizes: good.map(g => g.length), // 내림차순
-      };
-    };
-
-    const pcap = Math.max(1, Math.floor(all.length / 2));
-    let best = null;
-    // 파티 인원을 큰 순서로 나열해 앞에서부터 비교 (첫 파티가 더 꽉 찬 쪽이 이김)
-    const cmpSizes = (a, b) => {
-      for (let i = 0; i < Math.max(a.length, b.length); i++) {
-        const d = (a[i] || 0) - (b[i] || 0);
-        if (d !== 0) return d;
-      }
-      return 0;
-    };
-    const better = (r) => {
-      if (!best) return true;
-      const c = cmpSizes(r.sizes, best.sizes);
-      if (c !== 0) return c > 0;                                  // 1순위: 앞 파티부터 꽉 채우기
-      if (r.placed !== best.placed) return r.placed > best.placed; // 2순위: 남는 사람 최소화
-      return r.parties.length < best.parties.length;
-    };
-
-    for (let n = 1; n <= pcap; n++) {
-      for (const mode of ["fill", "spread"]) {
-        const r = tryPack(n, mode);
-        if (better(r)) best = r;
-      }
-    }
-    return best || { parties: [], leftovers: [...all] };
-  };
-
-  // 같은 레이드에 파티가 여러 개면 파티끼리 평균 전투력이 비슷해지도록
-  // 같은 역할(서포터↔서포터, 딜러↔딜러)끼리 파티 간 맞교환을 반복한다.
-  // 맞교환이라 파티 인원·서폿/딜러 수는 그대로이고, 직업·원정대(부계정 포함) 중복 금지도 지킨다.
-  const balanceRaidParties = (parties) => {
-    if (parties.length < 2) return parties;
-    const ps = parties.map(p => [...p]);
-    const avg = (p) => p.reduce((s, c) => s + (c.combatPower || 0), 0) / p.length;
-    const cost = () => {
-      const a = ps.map(avg);
-      const mean = a.reduce((s, x) => s + x, 0) / a.length;
-      return a.reduce((s, x) => s + (x - mean) ** 2, 0);
-    };
-    const isSup = (c) => c.role === "서포터";
-    const canJoin = (party, c, leaving) =>
-      party.every(m => m === leaving || (m.className !== c.className && m.ownerGroup !== c.ownerGroup));
-
-    let cur = cost();
-    for (let iter = 0; iter < 300; iter++) {
-      let best = null;
-      for (let i = 0; i < ps.length; i++) {
-        for (let j = i + 1; j < ps.length; j++) {
-          for (let x = 0; x < ps[i].length; x++) {
-            for (let y = 0; y < ps[j].length; y++) {
-              const a = ps[i][x], b = ps[j][y];
-              if (isSup(a) !== isSup(b)) continue;
-              if (!canJoin(ps[j], a, b) || !canJoin(ps[i], b, a)) continue;
-              ps[i][x] = b; ps[j][y] = a;
-              const c = cost();
-              ps[i][x] = a; ps[j][y] = b;
-              if (c < cur - 1e-6 && (!best || c < best.c)) best = { i, j, x, y, c };
-            }
-          }
-        }
-      }
-      if (!best) break;
-      const t = ps[best.i][best.x];
-      ps[best.i][best.x] = ps[best.j][best.y];
-      ps[best.j][best.y] = t;
-      cur = best.c;
-    }
-    return ps;
-  };
-
-  const balanceEightManParty = (members) => {
-    const sorted = [...members].sort((a, b) => b.combatPower - a.combatPower);
-    const g1 = [];
-    const g2 = [];
-
-    for (const m of sorted) {
-      const g1Total = g1.reduce((sum, x) => sum + x.combatPower, 0);
-      const g2Total = g2.reduce((sum, x) => sum + x.combatPower, 0);
-      
-      const isDlr = m.role === "딜러";
-      const g1DlrCount = g1.filter(x => x.role === "딜러").length;
-      const g1SupCount = g1.length - g1DlrCount;
-      const g2DlrCount = g2.filter(x => x.role === "딜러").length;
-      const g2SupCount = g2.length - g2DlrCount;
-
-      const canGoG1 = g1.length < 4 && (isDlr ? g1DlrCount < 3 : g1SupCount < 1);
-      const canGoG2 = g2.length < 4 && (isDlr ? g2DlrCount < 3 : g2SupCount < 1);
-
-      if (canGoG1 && canGoG2) {
-        if (g1Total <= g2Total) {
-          g1.push(m);
-        } else {
-          g2.push(m);
-        }
-      } else if (canGoG1) {
-        g1.push(m);
-      } else if (canGoG2) {
-        g2.push(m);
-      }
-    }
-
-    return { g1, g2, members: [...g1, ...g2] };
-  };
 
   // 클리어 표시 토글: 매칭에서 빼지 않고, 완료된 파티를 시각적으로 비활성화 표시만 함
   const handlePartyClear = (party) => {
@@ -677,76 +440,9 @@ export default function Home() {
 
   // 수동 편집: 선택한 캐릭터를 다른 캐릭터와 교체하거나 빈 자리로 이동
   const applyEdit = (from, to) => {
-    const next = partyResult.map(p => ({
-      ...p,
-      members: [...(p.members || [])],
-      g1: [...(p.g1 || [])],
-      g2: [...(p.g2 || [])],
-    }));
-
-    const fromParty = next.find(p => p.id === from.partyId);
-    const toParty = next.find(p => p.id === to.partyId);
-    if (!fromParty || !toParty) return;
-
-    // 같은 사람(부계정 포함)이 한 파티에 중복 편성되는지 확인
-    if (fromParty.id !== toParty.id && toParty.type !== "single") {
-      const movingRoot = rootOwner(from.owner);
-      const clash = (toParty.members || []).some(m =>
-        !(to.member && m.owner === to.member.owner && m.charName === to.member.charName) &&
-        rootOwner(m.owner) === movingRoot
-      );
-      if (clash && !window.confirm("같은 사람(부계정 포함)의 캐릭터가 이미 이 파티에 있습니다. 그래도 진행할까요?")) return;
-    }
-
-    const pull = (party, group, owner, charName) => {
-      const arr = party[group];
-      const i = arr.findIndex(m => m.owner === owner && m.charName === charName);
-      if (i === -1) return null;
-      const [c] = arr.splice(i, 1);
-      if (group !== "members") {
-        const mi = party.members.findIndex(m => m.owner === owner && m.charName === charName);
-        if (mi !== -1) party.members.splice(mi, 1);
-      }
-      return c;
-    };
-
-    const push = (party, group, c) => {
-      party[group].push(c);
-      if (group !== "members" && !party.members.some(m => m.owner === c.owner && m.charName === c.charName)) {
-        party.members.push(c);
-      }
-    };
-
-    const moving = pull(fromParty, from.group, from.owner, from.charName);
-    if (!moving) return;
-
-    if (to.member) {
-      // 두 캐릭터 자리 교체
-      const target = pull(toParty, to.group, to.member.owner, to.member.charName);
-      if (!target) {
-        push(fromParty, from.group, moving);
-        return;
-      }
-      push(toParty, to.group, moving);
-      push(fromParty, from.group, target);
-    } else {
-      // 빈 자리로 이동 (정원 초과 방지)
-      const cap = toParty.type === 8 || toParty.type === 4 ? 4 : Infinity;
-      if (toParty[to.group].length >= cap) {
-        push(fromParty, from.group, moving);
-        return;
-      }
-      push(toParty, to.group, moving);
-    }
-
-    next.forEach(p => {
-      if (p.type === 8) p.members = [...p.g1, ...p.g2];
-    });
-
-    // 인원이 0명이 된 싱글/미편성 파티는 정리
-    const cleaned = next.filter(p => !(p.type === "single" && p.members.length === 0));
-
-    saveToLocalStorage(memberList, cleaned);
+    const next = movePartySlot(partyResult, from, to, rootOwner,
+      () => window.confirm("같은 사람(부계정 포함)의 캐릭터가 이미 이 파티에 있습니다. 그래도 진행할까요?"));
+    if (next) saveToLocalStorage(memberList, next);
   };
 
   const handleSlotClick = (partyId, group, member) => {
@@ -768,118 +464,7 @@ export default function Home() {
   };
   const generateParties = () => {
     if (memberList.length === 0) return alert("공대원 원정대를 먼저 등록해주세요!");
-
-    const sortedRaids = [...RAID_LIST].sort((a, b) => b.minLevel - a.minLevel);
-    const charCategoryTracker = {};
-    const allChars = [];
-
-    memberList.forEach(m => {
-      m.characters.forEach(c => {
-        if (!c.isExcluded) {
-          allChars.push({ ...c, owner: m.owner, ownerGroup: rootOwner(m.owner) });
-          const key = c.charName + m.owner;
-          if (!charCategoryTracker[key]) {
-            charCategoryTracker[key] = new Set();
-          }
-        }
-      });
-    });
-
-    const matchResults = [];
-
-    sortedRaids.forEach((raid) => {
-      const eligibleSupports = [];
-      const eligibleDealers = [];
-
-      allChars.forEach(c => {
-        const key = c.charName + c.owner;
-        const trackerSet = charCategoryTracker[key] || new Set();
-        const allowed = c.allowedRaids || RAID_LIST.filter(r => c.level >= r.minLevel).map(r => r.id);
-
-        if (allowed.includes(raid.id) && !trackerSet.has(raid.category)) {
-          if (c.role === "서포터") eligibleSupports.push(c);
-          else eligibleDealers.push(c);
-        }
-      });
-
-      // 직업/원정대 중복 없이, 최대한 많은 캐릭터를 파티에 채워 넣는다.
-      const packed = packRaid(eligibleSupports, eligibleDealers, raid.type);
-      const assignedParties = balanceRaidParties(packed.parties);
-      const leftovers = packed.leftovers;
-
-      const raidParties = [];
-      assignedParties.forEach((party, idx) => {
-        party.forEach(m => {
-          const key = m.charName + m.owner;
-          if (!charCategoryTracker[key]) charCategoryTracker[key] = new Set();
-          charCategoryTracker[key].add(raid.category);
-        });
-        
-        let finalizedMembers = party;
-        let g1 = [];
-        let g2 = [];
-        
-        if (raid.type === 8) {
-          const balanced = balanceEightManParty(party);
-          finalizedMembers = balanced.members;
-          g1 = balanced.g1;
-          g2 = balanced.g2;
-        }
-        
-        raidParties.push({
-          id: `${raid.id}-${idx + 1}`,
-          originalRaidId: raid.id,
-          raidName: assignedParties.length === 1 ? raid.name : `${raid.name} #${idx + 1}`,
-          baseRaidName: raid.name,
-          category: raid.category,
-          type: raid.type,
-          minLevel: raid.minLevel,
-          members: finalizedMembers,
-          g1: g1,
-          g2: g2
-        });
-      });
-
-      if (leftovers.length > 0) {
-        leftovers.forEach(m => {
-          const key = m.charName + m.owner;
-          if (!charCategoryTracker[key]) charCategoryTracker[key] = new Set();
-          charCategoryTracker[key].add(raid.category);
-        });
-        raidParties.push({
-          id: `${raid.id}-single`,
-          originalRaidId: raid.id,
-          raidName: `${raid.name} (싱글 / 미편성)`,
-          baseRaidName: raid.name,
-          category: raid.category,
-          type: "single",
-          minLevel: raid.minLevel,
-          members: leftovers,
-          g1: [],
-          g2: []
-        });
-      }
-      
-      matchResults.push(...raidParties);
-    });
-
-    matchResults.sort((a, b) => {
-      const aIsSingle = a.raidName.includes("싱글 / 미편성") || a.type === "single";
-      const bIsSingle = b.raidName.includes("싱글 / 미편성") || b.type === "single";
-      
-      if (aIsSingle && !bIsSingle) return 1;
-      if (!aIsSingle && bIsSingle) return -1;
-
-      if (a.originalRaidId !== b.originalRaidId) return a.originalRaidId - b.originalRaidId;
-      return a.id.localeCompare(b.id);
-    });
-
-    let partyIndex = 1;
-    matchResults.forEach((p) => {
-      if (!p.raidName.includes("싱글 / 미편성") && p.type !== "single") p.partyNum = partyIndex++;
-    });
-
-    saveToLocalStorage(memberList, matchResults);
+    saveToLocalStorage(memberList, buildParties(memberList, RAID_LIST, rootOwner));
   };
 
   const getRaidIllustration = (raidId) => {
@@ -888,146 +473,6 @@ export default function Home() {
     const sameCat = raid && RAID_LIST.find(r => r.category === raid.category && r.image);
     return (sameCat && sameCat.image) || "/raid_1.jpg";
   };
-
-  /* ---------- 서버 공유 동기화 ----------
-     원정대 / 파티 / 레이드 목록은 서버(/api/state)가 기준. 로컬 변경은 자동으로 올리고,
-     다른 사람의 변경은 2초마다 받아온다. 동시에 수정하면 원정대·파티·레이드 단위로 3-way 병합. */
-  const [syncStatus, setSyncStatus] = useState("connecting"); // connecting | live | local | error
-  const adminTokenRef = useRef("");
-  const pendingActions = useRef([]);
-  const actorRef = useRef("");
-  const sync = useRef({ ready: false, version: 0, base: null, baseSnap: "", pushing: false, timer: null });
-  const latest = useRef({ members: [], parties: [], raids: DEFAULT_RAIDS });
-
-  const snapOf = (st) => JSON.stringify([st.members, st.parties, st.raids]);
-
-  const normalizeServer = (state) => {
-    const raids = validRaids(state.raids) ? state.raids : DEFAULT_RAIDS;
-    return { members: state.members || [], parties: migratePartyNames(state.parties || [], raids), raids };
-  };
-
-  const applyLocal = (st) => {
-    latest.current = st;
-    setMemberList(st.members);
-    setPartyResult(st.parties);
-    setRaidList(st.raids);
-    try {
-      localStorage.setItem("loa_members", JSON.stringify(st.members));
-      localStorage.setItem("loa_party_result", JSON.stringify(st.parties));
-      localStorage.setItem("loa_raids", JSON.stringify(st.raids));
-    } catch {}
-  };
-
-  const adoptServer = (state) => {
-    const st = normalizeServer(state);
-    const s = sync.current;
-    s.version = state.version || 0;
-    s.base = st;
-    s.baseSnap = snapOf(st);
-    applyLocal(st);
-  };
-
-  const pushState = async () => {
-    const s = sync.current;
-    if (!s.ready || s.pushing) return;
-    const cur0 = latest.current;
-    const snap = snapOf(cur0);
-    if (snap === s.baseSnap) return;
-    s.pushing = true;
-    try {
-      const res = await fetch("/api/state", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", ...(adminTokenRef.current ? { "x-admin-token": adminTokenRef.current } : {}) },
-        body: JSON.stringify({ baseVersion: s.version, members: cur0.members, parties: cur0.parties, raids: cur0.raids, actor: actorRef.current, actions: pendingActions.current }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        pendingActions.current = [];
-        s.version = data.version;
-        s.base = cur0;
-        s.baseSnap = snap;
-        setSyncStatus(st => (st === "local" ? st : "live"));
-      } else if (res.status === 403 && data.state) {
-        // 관리자 권한 없이 레이드를 지운 경우 → 서버 상태로 되돌림
-        adoptServer(data.state);
-        alert(data.error || "관리자만 할 수 있는 작업입니다.");
-      } else if (res.status === 409 && data.state) {
-        // 다른 사람이 먼저 저장함 → 내 변경분을 서버 최신본 위에 병합해서 다시 올림
-        const server = normalizeServer(data.state);
-        const cur = latest.current;
-        const raids = merge3(s.base.raids, cur.raids, server.raids, r => r.id);
-        const merged = {
-          members: merge3(s.base.members, cur.members, server.members, m => m.owner),
-          parties: migratePartyNames(merge3(s.base.parties, cur.parties, server.parties, p => p.id), raids),
-          raids,
-        };
-        s.version = data.state.version || 0;
-        s.base = server;
-        s.baseSnap = snapOf(server);
-        applyLocal(merged);
-      } else {
-        setSyncStatus("error");
-      }
-    } catch {
-      setSyncStatus("error");
-    } finally {
-      s.pushing = false;
-      if (snapOf(latest.current) !== s.baseSnap) {
-        clearTimeout(s.timer);
-        s.timer = setTimeout(pushState, 300);
-      }
-    }
-  };
-
-  // 최초 접속: 서버 상태를 받아오고, 서버가 비어 있으면 이 브라우저의 기존 데이터를 올린다
-  useEffect(() => {
-    let alive = true;
-    const pull = async (first) => {
-      const s = sync.current;
-      try {
-        const res = await fetch("/api/state", { cache: "no-store" });
-        const data = await res.json();
-        if (!alive || !res.ok) throw new Error();
-        if (first) {
-          s.ready = true;
-          setSyncStatus(data.shared ? "live" : "local");
-          const server = data.state;
-          if (!server.version) {
-            // 서버가 비어 있음 → 이 브라우저에 데이터가 있을 때만 첫 공유 상태로 업로드
-            // (빈 브라우저가 먼저 접속해도 빈 상태를 올려서 다른 사람의 기존 데이터를 막지 않도록)
-            const empty = { members: [], parties: [], raids: DEFAULT_RAIDS };
-            s.version = 0; s.base = empty; s.baseSnap = snapOf(empty);
-            pushState();
-          } else {
-            adoptServer(server);
-          }
-          return;
-        }
-        setSyncStatus(st => (st === "error" ? (data.shared ? "live" : "local") : st));
-        const dirty = snapOf(latest.current) !== s.baseSnap;
-        if (data.state.version > s.version && !s.pushing && !dirty) adoptServer(data.state);
-        else if (data.state.version > s.version && dirty) pushState(); // 409 → 병합 경로
-      } catch {
-        if (alive) setSyncStatus("error");
-        if (first && alive) setTimeout(() => pull(true), 3000);
-      }
-    };
-    pull(true);
-    const t = setInterval(() => { if (sync.current.ready) pull(false); }, 2000);
-    return () => { alive = false; clearInterval(t); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // 로컬에서 원정대/파티/레이드 목록이 바뀌면 서버로 올린다 (짧게 모아서)
-  useEffect(() => {
-    latest.current = { members: memberList, parties: partyResult, raids: raidList };
-    const s = sync.current;
-    if (!s.ready) return;
-    if (snapOf(latest.current) === s.baseSnap) return;
-    clearTimeout(s.timer);
-    s.timer = setTimeout(pushState, 250);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [memberList, partyResult, raidList]);
 
   /* ---------- 레이드 관리 ---------- */
   // 레이드 목록 변경을 저장하고, 원정대 캐릭터의 레이드 선택과 파티 이름을 함께 정리한다.
@@ -1062,7 +507,10 @@ export default function Home() {
     }));
     setRaidList(nextRaids);
     try { localStorage.setItem("loa_raids", JSON.stringify(nextRaids)); } catch {}
-    saveToLocalStorage(members, migratePartyNames(partyResult, nextRaids));
+    // 삭제된 레이드의 파티는 같이 정리 (레이드 삭제는 관리자만 가능)
+    const removedIds = new Set(RAID_LIST.filter(r => !nextRaids.some(n => n.id === r.id)).map(r => r.id));
+    const parties = removedIds.size ? partyResult.filter(p => !removedIds.has(p.originalRaidId)) : partyResult;
+    saveToLocalStorage(members, migratePartyNames(parties, nextRaids));
   };
 
   const nextRaidId = () => RAID_LIST.reduce((m, r) => Math.max(m, r.id), 0) + 1;
@@ -1117,45 +565,18 @@ export default function Home() {
   const [newRaid, setNewRaid] = useState({ series: "", diff: "노말", type: 8, minLevel: 1700, image: "/raid_1.jpg" });
   const [uploading, setUploading] = useState(false);
 
-  /* ---------- 관리자 (레이드 삭제 권한) ---------- */
-  const [adminToken, setAdminToken] = useState("");
+  /* ---------- 관리자 로그인 창 ---------- */
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminPw, setAdminPw] = useState("");
   const [adminErr, setAdminErr] = useState("");
-  const isAdmin = !!adminToken;
-  useEffect(() => {
-    let saved = "";
-    try { saved = localStorage.getItem("loa_admin_token") || ""; } catch {}
-    if (!saved) return;
-    // 저장된 토큰이 아직 유효한지 서버에 확인 (비밀번호가 바뀌었으면 자동 로그아웃)
-    fetch("/api/admin", { headers: { "x-admin-token": saved } })
-      .then(r => r.json())
-      .then(d => {
-        if (d.admin) { adminTokenRef.current = saved; setAdminToken(saved); }
-        else { try { localStorage.removeItem("loa_admin_token"); } catch {} }
-      })
-      .catch(() => {});
-  }, []);
   const adminLogin = async () => {
     setAdminErr("");
-    try {
-      const res = await fetch("/api/admin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: adminPw }) });
-      const d = await res.json();
-      if (!res.ok) { setAdminErr(d.error || "로그인 실패"); return; }
-      adminTokenRef.current = d.token;
-      setAdminToken(d.token);
-      try { localStorage.setItem("loa_admin_token", d.token); } catch {}
-      setAdminOpen(false);
-      setAdminPw("");
-    } catch {
-      setAdminErr("서버와 통신하지 못했습니다.");
-    }
+    const err = await admin.login(adminPw);
+    if (err) { setAdminErr(err); return; }
+    setAdminOpen(false);
+    setAdminPw("");
   };
-  const adminLogout = () => {
-    adminTokenRef.current = "";
-    setAdminToken("");
-    try { localStorage.removeItem("loa_admin_token"); } catch {}
-  };
+  const adminLogout = admin.logout;
   // 관리자 전용 동작: 로그인 안 되어 있으면 로그인 창을 띄운다
   const requireAdmin = (fn) => () => {
     if (!isAdmin) { setAdminErr(""); setAdminOpen(true); return; }
@@ -1247,6 +668,10 @@ export default function Home() {
       const bCleared = !!b.party.cleared;
       if (aCleared !== bCleared) return aCleared ? 1 : -1;
 
+      // 4인 레이드가 8인 레이드보다 위
+      const typeDiff = typeRank(a.party, RAID_LIST) - typeRank(b.party, RAID_LIST);
+      if (typeDiff !== 0) return typeDiff;
+
       switch (sortMode) {
         case "members": {
           const diff = (b.party.members?.length || 0) - (a.party.members?.length || 0);
@@ -1303,21 +728,6 @@ export default function Home() {
   };
 
   /* ---------- style helpers ---------- */
-  const pill = (active, accent = "#FF4B57") => ({
-    borderRadius: 999, padding: "9px 15px", fontSize: 13, fontWeight: active ? 700 : 500, cursor: "pointer",
-    whiteSpace: "nowrap", border: `1px solid ${active ? accent : "#262C34"}`,
-    background: active ? accent : "transparent", color: active ? "#0B0D10" : "#A8B0B9"
-  });
-  const card = { background: "#14181D", border: "1px solid #262C34", borderRadius: 18, padding: 18 };
-  const h1 = { fontFamily: "'Archivo'", fontWeight: 800, fontSize: "clamp(26px,5vw,34px)" };
-  const sub = { fontSize: 13, color: "#8B949E", marginTop: 4 };
-  const input = { background: "#0F1318", border: "1px solid #2C333C", borderRadius: 10, padding: "11px 13px", color: "#E8EAEC", fontSize: 13 };
-  const selectStyle = { ...input, padding: "8px 10px", fontSize: 12, cursor: "pointer" };
-  const btnPrimary = { background: "#FF4B57", color: "#0B0D10", border: "none", borderRadius: 12, padding: "12px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" };
-  const btnGhost = { background: "#1B2027", color: "#E8EAEC", border: "1px solid #333B45", borderRadius: 12, padding: "12px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" };
-  const btnSmall = { background: "#252C34", color: "#C8D0D8", border: "1px solid #333B45", borderRadius: 8, padding: "6px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" };
-  const mono = "'IBM Plex Mono'";
-  const fadeUp = "fadeUp .45s cubic-bezier(.2,.7,.3,1) both";
 
   // editable=false 이면 표시만 (파티 편성 화면에서는 역할 전환 불가 — 원정대 관리에서만)
   const roleBadge = (member, ownerName, editable = true) => {
@@ -1687,7 +1097,7 @@ export default function Home() {
   useEffect(() => {
     if (screen !== "log" || !isAdmin) return;
     loadLog();
-    const t = setInterval(loadLog, 10000);
+    const t = setInterval(() => { if (!document.hidden) loadLog(); }, 30000);
     return () => clearInterval(t);
   }, [screen, isAdmin]);
   useEffect(() => {
@@ -1731,133 +1141,39 @@ export default function Home() {
         <div style={{ position: "absolute", bottom: 28, fontFamily: mono, fontSize: 11, letterSpacing: ".16em", color: "#5A626C" }}>MADE BY 이현</div>
       </div>
 
+      {/* 새로 갈 수 있게 된 레이드 알림 */}
+      {raidNotices && (
+        <RaidNoticesModal
+          notices={raidNotices}
+          onClose={() => setRaidNotices(null)}
+          onOpenConfig={(n) => {
+            const ch = memberList.find(m => m.owner === n.owner)?.characters.find(c => c.charName === n.charName);
+            if (ch) setSelectedCharForConfig({ owner: n.owner, char: ch });
+          }}
+        />
+      )}
+
       {/* 내 이름 설정 */}
       {nameOpen && isAdmin && (
-        <div onClick={() => setNameOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 97, background: "rgba(5,7,9,.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <form onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); saveActorName(); }} style={{ width: "min(340px,100%)", background: "#14181D", border: "1px solid #2C333C", borderRadius: 18, padding: 20, display: "flex", flexDirection: "column", gap: 12, animation: "popIn .3s cubic-bezier(.2,.7,.3,1) both" }}>
-            <div style={{ fontSize: 15, fontWeight: 700 }}>내 이름</div>
-            <div style={{ fontSize: 12, color: "#8B949E" }}>파티를 바꾸거나 클리어를 누르면 이 이름으로 기록됩니다. 이 브라우저에만 저장됩니다.</div>
-            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} maxLength={20} placeholder="예: 이현" style={{ background: "#0F1318", border: "1px solid #2C333C", borderRadius: 10, padding: "11px 14px", color: "#E8EAEC", fontSize: 13 }} />
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button type="button" onClick={() => setNameOpen(false)} style={{ background: "transparent", color: "#8B949E", border: "1px solid #2C333C", borderRadius: 10, padding: "9px 14px", fontSize: 13, cursor: "pointer" }}>취소</button>
-              <button type="submit" style={{ background: "#C8F24C", color: "#0B0D10", border: "none", borderRadius: 10, padding: "9px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>저장</button>
-            </div>
-          </form>
-        </div>
+        <NameModal value={nameDraft} onChange={setNameDraft} onSave={saveActorName} onClose={() => setNameOpen(false)} />
       )}
 
       {/* admin login */}
       {adminOpen && (
-        <div onClick={() => setAdminOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 97, background: "rgba(5,7,9,.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <form onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); adminLogin(); }} style={{ width: "min(340px,100%)", background: "#14181D", border: "1px solid #2C333C", borderRadius: 18, padding: 20, display: "flex", flexDirection: "column", gap: 12, animation: "popIn .3s cubic-bezier(.2,.7,.3,1) both" }}>
-            <div style={{ fontSize: 15, fontWeight: 700 }}>관리자 로그인</div>
-            <div style={{ fontSize: 12, color: "#8B949E" }}>레이드 삭제와 목록 초기화는 관리자만 할 수 있습니다.</div>
-            <input autoFocus type="password" inputMode="numeric" value={adminPw} onChange={(e) => setAdminPw(e.target.value)} placeholder="비밀번호" style={{ background: "#0F1318", border: "1px solid #2C333C", borderRadius: 10, padding: "11px 14px", color: "#E8EAEC", fontSize: 13 }} />
-            {adminErr && <div style={{ fontSize: 12, color: "#E1424F" }}>{adminErr}</div>}
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button type="button" onClick={() => setAdminOpen(false)} style={{ background: "transparent", color: "#8B949E", border: "1px solid #2C333C", borderRadius: 10, padding: "9px 14px", fontSize: 13, cursor: "pointer" }}>취소</button>
-              <button type="submit" style={{ background: "#C8F24C", color: "#0B0D10", border: "none", borderRadius: 10, padding: "9px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>로그인</button>
-            </div>
-          </form>
-        </div>
+        <AdminLoginModal password={adminPw} onPasswordChange={setAdminPw} error={adminErr} onSubmit={adminLogin} onClose={() => setAdminOpen(false)} />
       )}
 
       {/* guide modal */}
-      {isGuideOpen && (
-        <div onClick={() => setIsGuideOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 96, background: "rgba(5,7,9,.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px,100%)", background: "#14181D", border: "1px solid #2C333C", borderRadius: 20, padding: 22, display: "flex", flexDirection: "column", gap: 16, animation: "popIn .35s cubic-bezier(.2,.7,.3,1) both" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-              <div>
-                <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: ".14em", color: "#FF4B57", marginBottom: 6 }}>HOW TO USE</div>
-                <div style={{ fontFamily: "'Archivo'", fontWeight: 800, fontSize: 22 }}>사용 가이드</div>
-              </div>
-              <button onClick={() => setIsGuideOpen(false)} style={{ background: "transparent", border: "none", color: "#6B737C", fontSize: 18, cursor: "pointer", padding: "2px 6px" }}>×</button>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "60vh", overflowY: "auto" }}>
-              {[
-                ["01", "원정대 등록", <><b>원정대</b> 탭에서 공대원의 대표 캐릭터명(필요하면 실명도)을 입력하고 <b>[원정대 등록]</b>을 누르세요. 1700 이상 캐릭터의 레벨·전투력·초상화를 자동으로 불러옵니다. <b>↻ 갱신</b>(원정대별) 또는 <b>↻ 전체 원정대 갱신</b>으로 최신 정보를 다시 불러올 수 있습니다.</>],
-                ["02", "부계정 연결", <>원정대 이름 옆의 선택창에서 <b>OO 의 부계정</b>을 고르면 본계정과 한 사람으로 묶여 함께 표시되고, 자동 조합 때 같은 파티에 함께 들어가지 않습니다.</>],
-                ["03", "캐릭터 설정", <>캐릭터마다 <b>매칭 참여중 / 제외됨</b>을 눌러 이번 주 파티에서 뺄 수 있고, <b>⚙ 레이드 설정</b>에서 갈 난이도를 고르거나 이미 다녀온 레이드를 체크 해제할 수 있습니다. 바드·홀리나이트·도화가·발키리는 <b>딜러/서포터 배지</b>를 눌러 역할을 바꿀 수 있습니다.</>],
-                ["04", "최적 파티 자동 조합", <><b>파티 편성</b> 탭의 <b>[최적 파티 자동 조합]</b>을 누르면 레벨 조건, 서포터 수, 직업·원정대(부계정 포함) 중복을 고려해 앞 파티부터 꽉 채워 편성합니다. 자리가 없는 캐릭터는 <b>싱글 / 미편성</b>으로 아래에 모입니다. 자동 조합은 상단 <b>관리자</b> 로그인 후에만 할 수 있습니다.</>],
-                ["05", "보기 방식과 수동 편집", <><b>카드 보기 / 표 요약</b>을 전환하고, 레이드별·공대원별로 걸러 볼 수 있습니다. <b>파티 수동 편집</b>을 켜면 캐릭터를 눌러 선택한 뒤 다른 캐릭터나 빈 자리를 눌러 바꿀 수 있습니다 (표 요약에서도 가능, 관리자 로그인 필요). <b>📋 텍스트 복사</b>를 누르면 지금 보이는 파티 목록을 디스코드·카톡에 붙여넣기 좋은 글로 복사합니다.</>],
-                ["06", "클리어 체크", <><b>클리어 현황 → 파티별 클리어</b>에서 다녀온 파티를 눌러 클리어로 표시하세요. <b>캐릭터별 현황</b>에서는 캐릭터마다 레이드별로 남음 / 편성 / 클리어 상태를 한눈에 볼 수 있습니다. 수요일 리셋 후에는 <b>↺ 주간 초기화</b>로 클리어 표시와 클리어 체크를 한 번에 되돌리세요.</>],
-                ["07", "레이드 관리", <><b>레이드 관리</b> 탭에서 새 레이드나 난이도를 추가하고, 이름·인원(4인/8인)·입장 레벨·배경 이미지를 바꿀 수 있습니다. 배경은 <b>📁 내 PC</b>로 내 컴퓨터 이미지를 올릴 수도 있습니다. 새 레이드는 입장 레벨이 되는 캐릭터에게 자동으로 선택되며, 다음 자동 조합부터 반영됩니다. 레이드·난이도 삭제와 목록 초기화는 상단 <b>관리자</b> 로그인 후에만 할 수 있습니다.</>],
-                ["08", "모두 함께 보기", <>원정대 등록, 파티 편성, 클리어 체크는 서버에 저장되어 사이트에 접속한 모든 사람에게 몇 초 안에 똑같이 보입니다. 상단 오른쪽 점이 초록색이면 정상적으로 공유 중입니다. 누가 무엇을 바꿨는지는 관리자가 <b>변경 기록</b>에서 확인합니다.</>],
-              ].map(([n, title, body]) => (
-                <div key={n} style={{ display: "flex", gap: 14, background: "#1B2027", border: "1px solid #262C34", borderRadius: 12, padding: "12px 14px" }}>
-                  <div style={{ fontFamily: mono, fontSize: 12, color: "#C8F24C", flex: "none", paddingTop: 1 }}>{n}</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{title}</div>
-                    <div style={{ fontSize: 12, color: "#A8B0B9", lineHeight: 1.6 }}>{body}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button onClick={() => setIsGuideOpen(false)} style={{ background: "#C8F24C", color: "#0B0D10", border: "none", borderRadius: 10, padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>확인</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {isGuideOpen && <GuideModal onClose={() => setIsGuideOpen(false)} />}
 
       {/* character raid config modal */}
       {selectedCharForConfig && (
-        <div onClick={() => setSelectedCharForConfig(null)} style={{ position: "fixed", inset: 0, zIndex: 96, background: "rgba(5,7,9,.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(520px,100%)", background: "#14181D", border: "1px solid #2C333C", borderRadius: 20, padding: 22, display: "flex", flexDirection: "column", gap: 16, animation: "popIn .35s cubic-bezier(.2,.7,.3,1) both" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: ".14em", color: "#FF4B57", marginBottom: 6 }}>RAID SETTINGS</div>
-                <div style={{ fontFamily: "'Archivo'", fontWeight: 800, fontSize: 22, wordBreak: "break-all", lineHeight: 1.25 }}>{selectedCharForConfig.char.charName}</div>
-                <div style={{ fontSize: 12, color: "#8B949E", marginTop: 4 }}>
-                  {selectedCharForConfig.owner} 원정대 · {selectedCharForConfig.char.className} · <span style={{ fontFamily: mono, color: "#C8F24C" }}>Lv.{selectedCharForConfig.char.level}</span>
-                </div>
-              </div>
-              <button onClick={() => setSelectedCharForConfig(null)} style={{ background: "transparent", border: "none", color: "#6B737C", fontSize: 18, cursor: "pointer", padding: "2px 6px" }}>×</button>
-            </div>
-            <div style={{ fontSize: 12, color: "#8B949E", lineHeight: 1.6 }}>
-              이 캐릭터가 매칭될 레이드를 선택하세요. <b style={{ color: "#C6CDD4" }}>이미 다녀온 레이드(클리어)</b>는 체크를 해제하면 파티 매칭에서 제외됩니다. 같은 레이드 계열은 하나만 선택됩니다.
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "52vh", overflowY: "auto", paddingRight: 2 }}>
-              {RAID_LIST.map((raid) => {
-                const isLevelMet = selectedCharForConfig.char.level >= raid.minLevel;
-                const allowedRaids = selectedCharForConfig.char.allowedRaids || [];
-                const isChecked = allowedRaids.includes(raid.id);
-                return (
-                  <label
-                    key={raid.id}
-                    data-row={isLevelMet ? "1" : undefined}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, borderRadius: 12, padding: "11px 14px",
-                      background: isChecked ? "rgba(200,242,76,.08)" : "#1B2027",
-                      border: `1px solid ${isChecked ? "rgba(200,242,76,.35)" : "#262C34"}`,
-                      opacity: isLevelMet ? 1 : .38, cursor: isLevelMet ? "pointer" : "not-allowed"
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                      <input
-                        type="checkbox"
-                        disabled={!isLevelMet}
-                        checked={isChecked}
-                        onChange={() => handleToggleCharRaid(selectedCharForConfig.owner, selectedCharForConfig.char.charName, raid.id)}
-                        style={{ width: 15, height: 15, accentColor: "#C8F24C", cursor: isLevelMet ? "pointer" : "not-allowed", flex: "none" }}
-                      />
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>{raid.name}</div>
-                        <div style={{ fontFamily: mono, fontSize: 10, color: "#6B737C" }}>권장 Lv.{raid.minLevel} · {raid.type}인</div>
-                      </div>
-                    </div>
-                    <span style={{ fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", color: !isLevelMet ? "#E1424F" : isChecked ? "#C8F24C" : "#2FD3B7" }}>
-                      {isLevelMet ? (isChecked ? "매칭 참여" : "✓ 클리어(제외)") : "레벨 미달"}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button onClick={() => setSelectedCharForConfig(null)} style={{ background: "#C8F24C", color: "#0B0D10", border: "none", borderRadius: 10, padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>확인 및 완료</button>
-            </div>
-          </div>
-        </div>
+        <CharRaidConfigModal
+          target={selectedCharForConfig}
+          raids={RAID_LIST}
+          onToggle={(raidId) => handleToggleCharRaid(selectedCharForConfig.owner, selectedCharForConfig.char.charName, raidId)}
+          onClose={() => setSelectedCharForConfig(null)}
+        />
       )}
 
       {/* background */}
@@ -1919,7 +1235,7 @@ export default function Home() {
             {(() => {
               const meta = {
                 connecting: ["#8B949E", "연결 중", "서버에 연결하는 중입니다"],
-                live: ["#C8F24C", "실시간 공유", "모든 사람이 같은 원정대/파티/클리어 상태를 봅니다 (2초마다 갱신)"],
+                live: ["#C8F24C", "실시간 공유", "모든 사람이 같은 원정대/파티/클리어 상태를 봅니다 (몇 초마다 갱신)"],
                 local: ["#E5C04C", "공유 저장소 미설정", "서버 저장소(Supabase 등) 환경변수가 없어 이 서버 메모리에만 저장됩니다"],
                 error: ["#E1424F", "동기화 오류", "서버와 통신하지 못했습니다. 자동으로 다시 시도합니다"],
               }[syncStatus];
@@ -2128,7 +1444,7 @@ export default function Home() {
                                     </select>
                                   )}
                                   <button onClick={() => handleRefreshMember(a.owner)} disabled={loading} title="원정대 정보 갱신" style={{ ...btnSmall, opacity: loading ? .6 : 1 }}>↻ 갱신</button>
-                                  <button onClick={() => handleRemoveMember(a.owner)} title="원정대 삭제" style={{ ...btnSmall, background: "transparent", color: "#6B737C" }}>삭제 ×</button>
+                                  <button onClick={requireAdmin(() => { if (window.confirm(`'${a.owner}' 원정대를 삭제할까요?\n편성된 파티도 모두 비워집니다.`)) handleRemoveMember(a.owner); })} title={isAdmin ? "원정대 삭제 (파티 편성도 비워집니다)" : "관리자만 할 수 있습니다"} style={{ ...btnSmall, background: "transparent", color: "#6B737C" }}>{isAdmin ? "" : "🔒 "}삭제 ×</button>
                                 </div>
                                 <div className="charGrid6">
                                   {a.characters.map((c, cIdx) => (

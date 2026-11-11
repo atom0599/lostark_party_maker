@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { getJSON, createJSON, casJSON, hasKV } from "../../../lib/store";
+import { getJSON, getVersion, createJSON, casJSON, hasKV } from "../../../lib/store";
 import { isAdmin } from "../../../lib/admin";
+import { adminOnlyChange } from "../../../lib/permissions";
+import { cleanupRaidImages } from "../../../lib/images";
 import { describeChanges, STATE_KEY, LOG_KEY, LOG_MAX } from "../../../lib/changelog";
 
 // 모든 사람이 함께 보는 공유 상태: 원정대 목록 + 파티 편성(클리어 포함) + 레이드 목록
@@ -11,8 +13,17 @@ export const dynamic = "force-dynamic";
 
 const emptyState = () => ({ version: 0, members: [], parties: [], updatedAt: 0 });
 
-export async function GET() {
+// ?v=<내가 가진 version> 을 붙이면, 서버 version 이 같을 때 전체 상태 대신 { same: true } 만 돌려준다.
+// (폴링 대부분이 '바뀐 것 없음'이라 저장소·네트워크 전송량을 크게 줄인다)
+export async function GET(request) {
   try {
+    const v = new URL(request.url).searchParams.get("v");
+    if (v != null && /^\d+$/.test(v)) {
+      const version = await getVersion(KEY);
+      if (version === Number(v)) {
+        return NextResponse.json({ same: true, version, shared: hasKV }, { headers: { "Cache-Control": "no-store" } });
+      }
+    }
     const state = (await getJSON(KEY)) || emptyState();
     return NextResponse.json({ state, shared: hasKV }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
@@ -47,12 +58,10 @@ export async function PUT(request) {
     if (baseVersion !== curVersion) {
       return NextResponse.json({ conflict: true, state: cur || emptyState() }, { status: 409 });
     }
-    // 레이드(난이도) 삭제는 관리자만
-    if (raids && cur && Array.isArray(cur.raids)) {
-      const removed = cur.raids.filter(r => !raids.some(n => n && n.id === r.id));
-      if (removed.length && !isAdmin(request)) {
-        return NextResponse.json({ error: "레이드 삭제는 관리자만 할 수 있습니다.", forbidden: true, state: cur }, { status: 403 });
-      }
+    // 파티 편성 변경 · 원정대 삭제 · 레이드 삭제는 관리자만 (lib/permissions.js)
+    const denied = adminOnlyChange(cur, { members, parties, raids });
+    if (denied && !isAdmin(request)) {
+      return NextResponse.json({ error: denied, forbidden: true, state: cur }, { status: 403 });
     }
     const next = { version: curVersion + 1, members, parties, raids: raids || (cur && cur.raids) || null, updatedAt: Date.now() };
     const ok = cur ? await casJSON(KEY, next, curVersion) : await createJSON(KEY, next);
@@ -60,6 +69,9 @@ export async function PUT(request) {
       return NextResponse.json({ conflict: true, state: (await getJSON(KEY)) || emptyState() }, { status: 409 });
     }
     await appendLog(cur, next, actor, actions);
+    if (raids && JSON.stringify(raids) !== JSON.stringify(cur && cur.raids)) {
+      await cleanupRaidImages(cur && cur.raids, next.raids);
+    }
     return NextResponse.json({ version: next.version });
   } catch (e) {
     console.error("state PUT", e);
